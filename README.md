@@ -55,10 +55,17 @@ Crie o projeto e pegue as **duas** connection strings. A *pooled* (com `-pooler`
 no host) vai em `DATABASE_URL`; a direta em `DATABASE_URL_UNPOOLED`. Migração de
 DDL via PgBouncer em transaction mode dá problema — por isso as duas.
 
+**Node 24 é obrigatório.** A Vercel desativa o Node 20 em 1º de outubro de 2026
+e a `sanitize-html` já exige >= 22.12. O `engines` do `package.json` sobrepõe a
+configuração do projeto na Vercel, então basta manter os dois alinhados.
+
 ```bash
-cp .env.example .env     # preencher
-npm install
-npm run migrate          # aplica db/migrations/001_schema_v5.sql
+nvm install 24 && nvm use 24    # ou: corepack/fnm/asdf
+node -v                         # tem que ser v24.x
+
+cp .env.example .env            # preencher
+npm install                     # deve reportar 0 vulnerabilities
+npm run migrate                 # aplica 001_schema_v5 e 002_publish_adapters
 ```
 
 ### 2. Configurar o destino de publicação

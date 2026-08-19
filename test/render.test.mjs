@@ -1,0 +1,89 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { renderPage, extractFaq, buildJsonLd } from '../lib/render.mjs';
+
+const fm = {
+  title: 'Arquitetura SaaS em 2026',
+  description: 'Guia técnico.',
+  summary: 'Resumo.',
+  author: 'Tales Hack',
+  publishedAt: '2026-08-14T10:00:00Z',
+  updatedAt: '2026-08-19T10:00:00Z',
+  tags: ['saas'],
+  draft: false,
+};
+const site = { name: 'Hack Tech Farm', baseUrl: 'https://hacktechfarm.com.br', blogBasePath: '/blog' };
+
+const md = `## Introdução
+
+Texto com [link externo](https://vercel.com/docs) e [interno](/blog/outro).
+
+| Opção | Custo |
+| --- | --- |
+| A | baixo |
+
+## Perguntas Frequentes
+
+### O que é multi-tenancy?
+
+É a capacidade de uma única instância da aplicação servir múltiplos clientes com isolamento de dados garantido no nível do banco.
+
+### Vale a pena usar RLS?
+
+Sim, desde que a conexão defina o tenant por transação, caso contrário a policy não isola nada e você tem falsa sensação de segurança.`;
+
+test('D12: sanitização remove script e handler de evento', () => {
+  const html = renderPage({ slug: 'x', frontmatter: fm, site,
+    markdown: md + '\n\n<script>alert(1)</script>\n<img src=x onerror="alert(1)">' });
+  assert.ok(!/<script/i.test(html.split('</head>')[1]), 'script sobreviveu no corpo');
+  assert.ok(!/onerror/i.test(html), 'handler de evento sobreviveu');
+});
+
+test('PRD 35: link externo recebe rel noopener noreferrer', () => {
+  const html = renderPage({ slug: 'x', frontmatter: fm, markdown: md, site });
+  assert.match(html, /href="https:\/\/vercel\.com\/docs"[^>]*rel="noopener noreferrer"/);
+});
+
+test('link interno NÃO recebe target blank', () => {
+  const html = renderPage({ slug: 'x', frontmatter: fm, markdown: md, site });
+  const anchor = html.match(/<a[^>]*href="\/blog\/outro"[^>]*>/)[0];
+  assert.ok(!/target=/.test(anchor));
+});
+
+test('PRD 33: th de tabela recebe scope=col', () => {
+  const html = renderPage({ slug: 'x', frontmatter: fm, markdown: md, site });
+  assert.match(html, /<th scope="col">/);
+});
+
+test('C1: FAQPage é derivado e Article também', () => {
+  const html = renderPage({ slug: 'x', frontmatter: fm, markdown: md, site });
+  const ld = JSON.parse(html.match(/application\/ld\+json">(.*?)<\/script>/s)[1]);
+  const types = ld['@graph'].map((n) => n['@type']);
+  assert.deepEqual(types, ['BlogPosting', 'FAQPage']);
+  assert.equal(ld['@graph'][1].mainEntity.length, 2);
+});
+
+test('PRD 37: dateModified vem do updatedAt', () => {
+  const ld = buildJsonLd({ frontmatter: fm, html: '', url: 'u', siteName: 's' });
+  assert.equal(ld['@graph'][0].dateModified, '2026-08-19T10:00:00Z');
+  assert.notEqual(ld['@graph'][0].datePublished, ld['@graph'][0].dateModified);
+});
+
+test('resposta de FAQ fora da faixa 40-800 é descartada', () => {
+  const html = '<h2>FAQ</h2><h3>Curta?</h3><p>Sim.</p><h3>Boa?</h3><p>' + 'a'.repeat(100) + '</p>';
+  const faq = extractFaq(html);
+  assert.equal(faq.length, 1);
+  assert.equal(faq[0].question, 'Boa?');
+});
+
+test('canonical e og:url usam o baseUrl do cliente', () => {
+  const html = renderPage({ slug: 'arquitetura-saas', frontmatter: fm, markdown: md, site });
+  assert.match(html, /rel="canonical" href="https:\/\/hacktechfarm\.com\.br\/blog\/arquitetura-saas"/);
+});
+
+test('título com aspas não quebra o HTML', () => {
+  const html = renderPage({ slug: 'x', site, markdown: md,
+    frontmatter: { ...fm, title: 'O "melhor" stack <script>' } });
+  assert.ok(!/<title>.*<script>/.test(html));
+  assert.match(html, /&quot;melhor&quot;/);
+});

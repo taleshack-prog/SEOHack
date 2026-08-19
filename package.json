@@ -1,0 +1,23 @@
+{
+  "name": "seohack",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SEO App (o cérebro) do Automated SEO+GEO Content Engine — Hack Tech Farm",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "migrate": "node --env-file=.env db/migrate.mjs",
+    "seed": "node --env-file=.env scripts/seed-topics.mjs",
+    "secrets": "node scripts/gen-secrets.mjs",
+    "test": "node --test test/*.test.mjs",
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "google-auth-library": "^9.15.1",
+    "marked": "^18.0.10",
+    "sanitize-html": "^2.17.7"
+  }
+}

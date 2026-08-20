@@ -145,12 +145,16 @@ export default cronHandler(async () => {
         const [article] = await sql`
           INSERT INTO articles (client_id, topic_id, slug, title, description, cluster,
                                 is_pillar, word_count, reading_time_minutes, status,
-                                operator_note_required, llm_provider, llm_model)
+                                operator_note_required, llm_provider, llm_model,
+                                markdown, frontmatter)
           VALUES (${client.id}, ${topic.id}, ${slug}, ${outline.title}, ${outline.description},
                   ${topic.cluster}, ${topic.is_pillar}, ${check.stats.words},
                   ${Math.ceil(check.stats.words / 220)},
-                  ${needsHuman ? 'needs_human' : 'ready'}, ${needsHuman}, ${provider}, ${model})
-          ON CONFLICT (client_id, slug) DO UPDATE SET updated_at = NOW()
+                  ${needsHuman ? 'needs_human' : 'ready'}, ${needsHuman}, ${provider}, ${model},
+                  ${markdown}, ${JSON.stringify(frontmatter)})
+          ON CONFLICT (client_id, slug) DO UPDATE
+            SET markdown = EXCLUDED.markdown, frontmatter = EXCLUDED.frontmatter,
+                updated_at = NOW()
           RETURNING id`;
 
         batch.push({ slug, markdown, frontmatter, _articleId: article.id, _topicId: topic.id });
@@ -162,18 +166,26 @@ export default cronHandler(async () => {
       }
     }
 
-    if (batch.length === 0) return { processed: topics.length, succeeded: 0, outcomes };
+    // Artigo com nota pendente NÃO vai para o destino agora: fica no banco
+    // aguardando a fila de revisão. Publicá-lo como rascunho no repositório só
+    // criaria lixo que o operador teria de limpar depois.
+    const aguardando = batch.filter((b) => b.frontmatter.draft);
+    const prontos = batch.filter((b) => !b.frontmatter.draft);
+    if (prontos.length === 0) {
+      return { processed: topics.length, succeeded: 0,
+               needsHuman: aguardando.map((b) => b.slug), outcomes };
+    }
 
     // Renderiza e publica pelo adapter configurado do cliente. Para 'github',
     // um commit atômico com todos os arquivos (A4). Nenhum código roda do lado
     // do cliente — ver lib/adapters/index.mjs.
-    const payload = batch.map(({ slug, markdown, frontmatter }) => ({ slug, markdown, frontmatter }));
+    const payload = prontos.map(({ slug, markdown, frontmatter }) => ({ slug, markdown, frontmatter }));
     const allPublished = await sql`
       SELECT slug, first_published_at, content_updated_at FROM articles
        WHERE client_id = ${client.id} AND status = 'published'`;
     const result = await publishViaAdapter(client, payload, allPublished);
 
-    for (const item of batch) {
+    for (const item of prontos) {
       const rejected = result.rejected.find((r) => r.slug === item.slug);
       if (rejected) {
         // A3: a F8 valida ANTES do commit, então não há lixo no histórico.

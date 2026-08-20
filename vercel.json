@@ -1,17 +1,60 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/api/cron/research",     "schedule": "0 6 * * 1" },
-    { "path": "/api/cron/content",      "schedule": "0 9 * * 1,3,5" },
-    { "path": "/api/cron/tracking",     "schedule": "0 20 * * *" },
-    { "path": "/api/cron/citation",     "schedule": "0 21 * * 2" },
-    { "path": "/api/cron/optimization", "schedule": "0 22 * * 0" }
+    {
+      "path": "/api/cron/research",
+      "schedule": "0 6 * * 1"
+    },
+    {
+      "path": "/api/cron/content",
+      "schedule": "0 9 * * 1,3,5"
+    },
+    {
+      "path": "/api/cron/tracking",
+      "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/cron/citation",
+      "schedule": "0 21 * * 2"
+    },
+    {
+      "path": "/api/cron/optimization",
+      "schedule": "0 22 * * 0"
+    }
   ],
   "functions": {
-    "api/cron/research.mjs":     { "maxDuration": 120 },
-    "api/cron/content.mjs":      { "maxDuration": 600 },
-    "api/cron/tracking.mjs":     { "maxDuration": 180 },
-    "api/cron/citation.mjs":     { "maxDuration": 300 },
-    "api/cron/optimization.mjs": { "maxDuration": 800 }
-  }
+    "api/cron/research.mjs": {
+      "maxDuration": 120
+    },
+    "api/cron/content.mjs": {
+      "maxDuration": 600
+    },
+    "api/cron/tracking.mjs": {
+      "maxDuration": 180
+    },
+    "api/cron/citation.mjs": {
+      "maxDuration": 300
+    },
+    "api/cron/optimization.mjs": {
+      "maxDuration": 800
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/api/ui/home"
+    },
+    {
+      "source": "/login",
+      "destination": "/api/ui/login"
+    },
+    {
+      "source": "/logout",
+      "destination": "/api/ui/logout"
+    },
+    {
+      "source": "/review/:slug",
+      "destination": "/api/ui/review?slug=:slug"
+    }
+  ]
 }

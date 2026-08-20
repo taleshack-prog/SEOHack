@@ -114,6 +114,35 @@ há impressões residuais para ler. Enquanto o `/blog` não passar de 200
 impressões/dia, o motor opera em **modo seed** e a entrada vem daqui. O gate
 seed → gsc é automático, por volume, não por data.
 
+## Painel de operação
+
+O painel é onde você trabalha. URL raiz do projeto na Vercel, protegido por senha.
+
+| Rota | O que faz |
+|---|---|
+| `/` | fila do que está parado esperando você, fila de tópicos e gasto do mês |
+| `/review/<slug>` | o artigo como manuscrito, com lacunas abertas onde a IA parou |
+| `/login` | entrada |
+| `/api/health` | estado da conexão e variáveis faltando |
+
+**A tela de revisão é o centro do sistema.** Quando o gerador precisa de um
+relato real, ele escreve `[NOTA PARA O OPERADOR]` no lugar e o artigo para.
+Nessa tela o texto aparece inteiro, em serifa, com uma lacuna vermelha exatamente
+onde falta a sua frase — você escreve dentro do artigo, vendo o contexto, e
+publica dali. Deixar a lacuna vazia remove o trecho.
+
+Artigo com nota pendente **não** vai para o site. Fica no banco até você liberar.
+
+Duas variáveis novas, obrigatórias:
+
+```
+DASHBOARD_PASSWORD=""    # a sua senha
+DASHBOARD_SECRET=""      # openssl rand -hex 32
+```
+
+Sem elas o painel não sobe — e como a URL da Vercel é pública, sem senha
+qualquer pessoa publicaria no seu site.
+
 ## Verificação
 
 ```bash
@@ -153,6 +182,13 @@ lib/
   search-console.mjs      GSC com backoff
   pipeline.mjs            pipeline_runs + correlation_id
   cron-auth.mjs           valida CRON_SECRET
+  auth.mjs                sessão do painel (cookie HMAC)
+  notes.mjs               marcadores do operador -> lacunas editáveis
+  ui.mjs                  layout e estilos do painel
+api/ui/
+  home.mjs                fila
+  review.mjs              revisão e publicação
+  login.mjs, logout.mjs, topic.mjs
 db/migrations/            schema v5, validado em PostgreSQL 16
 prompts/                  system-prompt-v5.md
 scripts/                  seed-topics.mjs, gen-secrets.mjs
@@ -185,6 +221,9 @@ da renderização, dentro do App. Uma cópia, uma fonte de verdade.
 - ✅ Sprint 2 — content engine com gate humano, budget, seed
 - ✅ Publicação por adapter — github, wordpress, webhook; renderização no App
 - 🟡 Sprint 3 — tracking e citation prontos; falta o Log Drain de crawlers de IA
-- 🔴 Sprint 4 — optimization avalia e lista candidatos; a reescrita via LLM está marcada como TODO. Dashboard não começou.
+- ✅ Painel de operação — fila de revisão, lacunas editáveis, aprovação de tópicos, login
+- 🟡 Sprint 4 — optimization avalia e lista candidatos; a reescrita via LLM está marcada como TODO
+- 🔴 Painel de métricas — ranking, citações em IA e histórico de custo ainda não têm tela
+- 🔴 Multi-cliente — onboarding, cadastro e isolamento por login não existem
 
 Contexto completo em `00-auditoria-e-correcoes.md` e `02-plano-desenvolvimento-v5.md`.

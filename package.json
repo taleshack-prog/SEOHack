@@ -12,7 +12,8 @@
     "seed": "node --env-file=.env scripts/seed-topics.mjs",
     "secrets": "node scripts/gen-secrets.mjs",
     "test": "node --test test/*.test.mjs",
-    "dev": "vercel dev"
+    "dev": "vercel dev",
+    "doctor": "node --env-file=.env scripts/doctor.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

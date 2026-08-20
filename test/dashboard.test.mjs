@@ -82,3 +82,37 @@ test('XSS: título malicioso é escapado na página', () => {
 test('painel não é indexável', () => {
   assert.match(page({ title: 'x', body: '' }), /name="robots" content="noindex,nofollow"/);
 });
+
+// --- health check por adapter (bug: cobrava variáveis da F8 de todo mundo) ---
+const { checkEnv } = await import('../lib/checks.mjs');
+const semEnv = (fn) => {
+  const antes = { ...process.env };
+  for (const k of ['PUBLISH_URL', 'PUBLISH_TOKEN', 'F8_SIGNING_SECRET']) delete process.env[k];
+  try { return fn(); } finally { Object.assign(process.env, antes); }
+};
+
+test('adapter github não exige as variáveis da F8', () => {
+  const r = semEnv(() => checkEnv('github'));
+  for (const k of ['PUBLISH_URL', 'PUBLISH_TOKEN', 'F8_SIGNING_SECRET']) {
+    assert.ok(!r.missing.includes(k), `${k} não deveria ser exigida no adapter github`);
+  }
+});
+
+test('adapter webhook continua exigindo as variáveis da F8', () => {
+  const r = semEnv(() => checkEnv('webhook'));
+  assert.ok(r.missing.includes('PUBLISH_URL'));
+  assert.ok(r.missing.includes('F8_SIGNING_SECRET'));
+});
+
+test('Search Console é opcional, não bloqueia o modo seed', () => {
+  const r = checkEnv('github');
+  assert.ok(!r.missing.includes('GSC_CLIENT_EMAIL'));
+  assert.ok(r.optionalMissing.includes('GSC_CLIENT_EMAIL') || process.env.GSC_CLIENT_EMAIL);
+});
+
+test('senha do painel é obrigatória em qualquer adapter', () => {
+  const antes = process.env.DASHBOARD_PASSWORD;
+  delete process.env.DASHBOARD_PASSWORD;
+  try { assert.ok(checkEnv('github').missing.includes('DASHBOARD_PASSWORD')); }
+  finally { process.env.DASHBOARD_PASSWORD = antes; }
+});

@@ -1,28 +1,50 @@
-// Health check. Público de propósito — não expõe nada sensível e serve de
-// smoke test do Sprint 1: se isto responde 200 com db:true, o Neon e as env
-// vars estão de pé.
-import { sql } from '../lib/db.mjs';
+// Estado do sistema.
+//
+//   GET /api/health          → rápido: banco, variáveis e configuração
+//   GET /api/health?deep=1   → também autentica no LLM e no destino de publicação
+//
+// O modo profundo faz chamadas reais e custa frações de centavo. Fica opcional
+// para que monitoramento automático não gaste dinheiro a cada minuto.
+import { sql, getClient } from '../lib/db.mjs';
+import { checkEnv, checkLlm, checkAdapter } from '../lib/checks.mjs';
 
 export default async function handler(req, res) {
-  const checks = { db: false, env: [] };
-  const required = [
-    'DATABASE_URL', 'CLIENT_DOMAIN', 'LLM_PROVIDER', 'LLM_MODEL', 'LLM_API_KEY',
-    'PUBLISH_URL', 'PUBLISH_TOKEN', 'F8_SIGNING_SECRET',
-    'GSC_CLIENT_EMAIL', 'GSC_PRIVATE_KEY', 'GSC_PROPERTY',
-  ];
-  checks.env = required.filter((k) => !process.env[k]);
+  const deep = req.query?.deep === '1';
+  const out = { ok: false, deep, checks: {}, ts: new Date().toISOString() };
 
   try {
     const [row] = await sql`SELECT 1 AS ok`;
-    checks.db = row?.ok === 1;
+    out.checks.db = row?.ok === 1;
   } catch (err) {
-    checks.dbError = err.message;
+    out.checks.db = false;
+    out.checks.dbError = err.message;
   }
 
-  const healthy = checks.db && checks.env.length === 0;
-  res.status(healthy ? 200 : 503).json({
-    ok: healthy,
-    checks: { db: checks.db, missingEnv: checks.env, dbError: checks.dbError },
-    ts: new Date().toISOString(),
-  });
+  let client = null;
+  if (out.checks.db) {
+    try {
+      client = await getClient();
+      out.checks.client = { name: client.name, domain: client.domain,
+                            adapter: client.publish_adapter };
+    } catch (err) {
+      out.checks.clientError = err.message;
+    }
+  }
+
+  const env = checkEnv(client?.publish_adapter);
+  out.checks.missingEnv = env.missing;
+  out.checks.optionalMissing = env.optionalMissing;
+
+  if (deep) {
+    out.checks.llm = await checkLlm();
+    if (client) out.checks.publishTarget = await checkAdapter(client);
+  }
+
+  out.ok = Boolean(out.checks.db) && env.missing.length === 0
+    && (!deep || (out.checks.llm?.ok && out.checks.publishTarget?.ok));
+
+  res.statusCode = out.ok ? 200 : 503;
+  res.setHeader('content-type', 'application/json; charset=utf-8');
+  res.setHeader('cache-control', 'no-store');
+  res.end(JSON.stringify(out, null, 2));
 }

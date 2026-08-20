@@ -97,7 +97,9 @@ export default cronHandler(async () => {
     const topics = await sql`
       SELECT * FROM topics
        WHERE client_id = ${client.id} AND status = 'approved'
-       ORDER BY opportunity_score DESC NULLS LAST, discovered_at ASC
+       -- is_pillar primeiro: a âncora do cluster tem que existir antes dos
+       -- satélites que linkam para ela (PRD §34).
+       ORDER BY is_pillar DESC, opportunity_score DESC NULLS LAST, discovered_at ASC
        LIMIT ${MAX_PER_RUN}`;
 
     if (topics.length === 0) {

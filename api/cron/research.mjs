@@ -12,17 +12,13 @@ import { cronHandler } from '../../lib/cron-auth.mjs';
 import { sql, getClient } from '../../lib/db.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
 import { defaultWindow, blogImpressions, pageTwoOpportunities } from '../../lib/search-console.mjs';
+import { opportunityScore } from '../../lib/score.mjs';
+
+export { opportunityScore } from '../../lib/score.mjs';
 
 const GSC_MODE_THRESHOLD = 200;   // impressões/dia no /blog
 const MIN_QUEUE = 6;              // abaixo disso, alerta: a fila vai secar
 
-/** Opportunity Score do PRD §24. Volume x proximidade do Top 10 x afinidade. */
-export function opportunityScore({ impressions = 0, position = 100, difficulty = 50, affinity = 1 }) {
-  const reach = Math.log10(impressions + 1) * 20;
-  const proximity = Math.max(0, 100 - Math.abs(position - 8) * 5);
-  const ease = 100 - difficulty;
-  return Number(((reach * 0.4 + proximity * 0.35 + ease * 0.25) * affinity).toFixed(2));
-}
 
 async function gscMode(client) {
   const window = { startDate: defaultWindow(30).startDate, endDate: defaultWindow(3).endDate };
@@ -30,7 +26,8 @@ async function gscMode(client) {
 
   let inserted = 0;
   for (const o of opportunities.slice(0, 20)) {
-    const score = opportunityScore({ impressions: o.impressions, position: o.position });
+    // Tópico descoberto na GSC é sempre satélite: pillar é decisão editorial.
+    const score = opportunityScore({ impressions: o.impressions, position: o.position, isPillar: false });
     // ON CONFLICT resolve o defeito D3: sem a chave natural normalizada o motor
     // reinseria o mesmo tópico a cada execução.
     const rows = await sql`

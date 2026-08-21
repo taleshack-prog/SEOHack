@@ -206,3 +206,28 @@ test('um só parser decide se o artigo tem nota do operador', async () => {
   assert.ok(!src.includes('includes(OPERATOR_MARKER)'),
     'ainda usa includes(), que pode discordar do parseNotes');
 });
+
+// --- tela de desempenho ---
+test('rota /desempenho existe e aponta para a função certa', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const j = JSON.parse(await readFile(fileURLToPath(new URL('../vercel.json', import.meta.url)), 'utf8'));
+  const r = j.rewrites.find((x) => x.source === '/desempenho');
+  assert.ok(r, 'rota ausente');
+  assert.equal(r.destination, '/api/ui/metrics');
+});
+
+test('tela de desempenho não inventa número quando não há dado', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(fileURLToPath(new URL('../api/ui/metrics.mjs', import.meta.url)), 'utf8');
+  // Cartões de agregado só aparecem sob temGsc — zero sugere fracasso,
+  // e ausência de dado não é fracasso.
+  assert.match(src, /\$\{temGsc \? `<div class="cards">/);
+  assert.match(src, /pendencias/, 'não explica o que falta medir');
+  assert.match(src, /8 a 12 semanas/, 'não avisa que é cedo para julgar');
+});
+
+test('navegação leva ao desempenho', () => {
+  assert.match(page({ title: 'x', body: '' }), /href="\/desempenho"/);
+});

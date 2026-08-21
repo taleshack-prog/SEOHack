@@ -91,3 +91,40 @@ test('slug inválido reprova', () => {
     assert.equal(r.valid, false, `deveria reprovar slug: ${s}`);
   }
 });
+
+// --- cold start: blog vazio não pode exigir links para artigos inexistentes ---
+const semLinksInternos = `## T
+${'palavra '.repeat(900)}
+Conheça os [nossos produtos](/produtos).`;
+
+test('blog vazio: não exige links internos', () => {
+  const r = validateArticle({ slug: 'primeiro', frontmatter: base(), markdown: semLinksInternos },
+    { productPaths: ['/produtos'], existingSlugs: [] });
+  assert.equal(r.valid, true, JSON.stringify(r.errors));
+  assert.equal(r.stats.minInternalRequired, 0);
+});
+
+test('blog com 1 artigo: exige no máximo 1 link interno', () => {
+  const r = validateArticle({ slug: 'segundo', frontmatter: base(), markdown: semLinksInternos },
+    { productPaths: ['/produtos'], existingSlugs: ['primeiro'] });
+  assert.ok(r.errors.some((e) => e.rule === 'internal_links'));
+  assert.equal(r.stats.minInternalRequired, 1);
+});
+
+test('link para artigo inexistente é reprovado', () => {
+  const md = `## T\n${'palavra '.repeat(900)}\n[a](/blog/existe) [b](/blog/inventado) [p](/produtos)`;
+  const r = validateArticle({ slug: 'artigo-teste', frontmatter: base(), markdown: md },
+    { productPaths: ['/produtos'], existingSlugs: ['existe'] });
+  assert.ok(r.errors.some((e) => e.rule === 'broken_internal_link'), JSON.stringify(r.errors));
+  assert.match(r.errors.find((e) => e.rule === 'broken_internal_link').detail, /inventado/);
+});
+
+test('caminho de produto vem do cliente, não do padrão da HTF', () => {
+  const md = `## T\n${'palavra '.repeat(900)}\n[loja](/shop)`;
+  const ok = validateArticle({ slug: 'artigo-teste', frontmatter: base(), markdown: md },
+    { productPaths: ['/shop'], existingSlugs: [] });
+  assert.equal(ok.valid, true, JSON.stringify(ok.errors));
+  const nao = validateArticle({ slug: 'artigo-teste', frontmatter: base(), markdown: md },
+    { productPaths: ['/produtos'], existingSlugs: [] });
+  assert.ok(nao.errors.some((e) => e.rule === 'product_links'));
+});

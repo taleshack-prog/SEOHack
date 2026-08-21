@@ -94,3 +94,27 @@ test('parseJson tolera cercas de markdown', () => {
   assert.deepEqual(parseJson('```json\n{"a":1}\n```'), { a: 1 });
   assert.deepEqual(parseJson('Segue:\n{"b":2}'), { b: 2 });
 });
+
+test('resposta cortada por limite de tokens dá erro que aponta a causa', () => {
+  const truncado = '{"title":"x","sections":[{"h2":"a","points":["b"';
+  assert.throws(() => parseJson(truncado, 'max_tokens'), /cortada pelo limite de tokens/);
+});
+
+test('JSON inválido sem corte mostra o trecho final', () => {
+  assert.throws(() => parseJson('{"a":1,,}'), /Trecho final/);
+});
+
+test('stop_reason é propagado pelo wrapper', async () => {
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true, status: 200, headers: new Map(),
+    json: async () => ({ content: [{ type: 'text', text: '{}' }],
+                         usage: { input_tokens: 1, output_tokens: 2000 },
+                         stop_reason: 'max_tokens' }),
+    text: async () => '',
+  });
+  try {
+    const r = await complete({ system: 's', prompt: 'p', provider: 'anthropic' });
+    assert.equal(r.stopReason, 'max_tokens');
+  } finally { globalThis.fetch = real; }
+});

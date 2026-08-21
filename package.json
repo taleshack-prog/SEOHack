@@ -14,7 +14,8 @@
     "test": "node --test test/*.test.mjs",
     "dev": "vercel dev",
     "doctor": "node --env-file=.env scripts/doctor.mjs",
-    "configure": "node --env-file=.env scripts/configure-target.mjs"
+    "configure": "node --env-file=.env scripts/configure-target.mjs",
+    "reset-topics": "node --env-file=.env scripts/reset-topics.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

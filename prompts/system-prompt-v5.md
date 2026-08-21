@@ -40,9 +40,10 @@ Violar qualquer item abaixo faz o artigo ser descartado antes da publicação.
   encerrado em maio de 2026 — esta seção existe pelo valor em GEO e para o
   leitor, não por enfeite na SERP. Escreva respostas que se sustentem sozinhas
   quando extraídas do contexto.
-- **Links, no mínimo:** 2 para outros artigos (`/blog/...`) e 1 para página de
-  produto ou serviço da HTF (`/servicos`, `/produtos`, `/contato`, `/neuroart`,
-  `/posthink`). Âncoras descritivas — nunca "clique aqui".
+- **Links:** os caminhos permitidos e os artigos que já existem vêm no bloco
+  CONTEXTO DESTE SITE, no fim deste prompt. Use **apenas** o que estiver listado
+  lá. Caminho fora da lista é link quebrado, e o artigo é descartado antes de
+  publicar. Âncoras descritivas — nunca "clique aqui".
 
 ## Como escrever
 
@@ -61,3 +62,9 @@ Violar qualquer item abaixo faz o artigo ser descartado antes da publicação.
 No máximo um por artigo, como bloco de citação, e só quando houver encaixe
 temático real com um serviço da HTF. Artigo puramente informativo sem encaixe
 não leva CTA — integridade editorial primeiro.
+
+## Formato do esboço
+
+Quando pedirem o esboço em JSON, devolva **apenas** o objeto, sem texto antes ou
+depois e sem cercas de markdown. Mantenha os campos enxutos: `points` com 3 a 5
+itens curtos por seção, no máximo 8 seções. O esboço é um mapa, não o artigo.

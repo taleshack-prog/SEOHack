@@ -17,7 +17,7 @@ export default requireAuth(async (req, res) => {
      ORDER BY created_at ASC`;
 
   const topics = await sql`
-    SELECT id, topic, cluster, is_pillar, status, opportunity_score
+    SELECT id, topic, cluster, is_pillar, status, opportunity_score, status_reason
       FROM topics
      WHERE client_id = ${client.id} AND status IN ('pending','approved')
      ORDER BY is_pillar DESC, opportunity_score DESC NULLS LAST
@@ -43,7 +43,13 @@ export default requireAuth(async (req, res) => {
   if (req.query?.iniciado) flash = { text: 'Produção iniciada. Leva de 2 a 5 minutos — atualize a página para acompanhar.' };
   else if (req.query?.aviso === 'ja-rodando') flash = { text: 'Já existe uma produção em andamento.', bad: true };
   else if (req.query?.ok) flash = { text: `Publicado. ${esc(req.query.ok)} está no ar.` };
-  else if (run?.status === 'failed' && !rodando) flash = { text: `Última produção falhou: ${esc(run.error_message || 'sem detalhe')}`, bad: true };
+  else if (!rodando && run && run.items_succeeded < run.items_processed) {
+    // 'partial' = rodou, gastou tokens, e nada foi publicado. Sem este aviso o
+    // operador via só o contador de custo subir, sem saber o porquê.
+    flash = { text: `Produção sem resultado: ${esc(run.error_message || 'sem detalhe registrado')}`, bad: true };
+  } else if (run?.status === 'failed' && !rodando) {
+    flash = { text: `Última produção falhou: ${esc(run.error_message || 'sem detalhe')}`, bad: true };
+  }
 
   const cards = held.map((a) => {
     const notes = parseNotes(a.markdown || '');
@@ -92,7 +98,8 @@ ${producao}
 ${topics.length ? `<table>
   <thead><tr><th>Tópico</th><th>Cluster</th><th>Score</th><th></th></tr></thead>
   <tbody>${topics.map((t) => `<tr>
-    <td>${esc(t.topic)} ${t.is_pillar ? '<span class="pill pillar">pilar</span>' : ''}</td>
+    <td>${esc(t.topic)} ${t.is_pillar ? '<span class="pill pillar">pilar</span>' : ''}
+      ${t.status_reason ? `<span class="failed-why">falhou: ${esc(t.status_reason)}</span>` : ''}</td>
     <td class="num">${esc(t.cluster || '—')}</td>
     <td class="num">${esc(t.opportunity_score || '—')}</td>
     <td class="num"><div class="row-actions">

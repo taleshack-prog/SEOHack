@@ -66,5 +66,6 @@ não leva CTA — integridade editorial primeiro.
 ## Formato do esboço
 
 Quando pedirem o esboço em JSON, devolva **apenas** o objeto, sem texto antes ou
-depois e sem cercas de markdown. Mantenha os campos enxutos: `points` com 3 a 5
+depois e sem cercas de markdown. O `title` deve caber em 60 caracteres e a
+`description` em 155 — são os limites que o Google exibe antes de truncar. Mantenha os campos enxutos: `points` com 3 a 5
 itens curtos por seção, no máximo 8 seções. O esboço é um mapa, não o artigo.

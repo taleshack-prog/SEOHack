@@ -10,6 +10,7 @@
 import { requireAuth } from '../../lib/auth.mjs';
 import { sql, getClient } from '../../lib/db.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
+import { ESSENCIAIS_GEO } from '../../lib/crawlers.mjs';
 
 const dinheiro = (v) => `US$ ${Number(v || 0).toFixed(2)}`;
 const dias = (d) => Math.floor((Date.now() - new Date(d)) / 86400000);
@@ -36,6 +37,15 @@ export default requireAuth(async (req, res) => {
     SELECT COUNT(DISTINCT user_agent)::int AS agentes, COALESCE(SUM(hit_count), 0)::int AS visitas
       FROM ai_crawler_hits
      WHERE client_id = ${client.id} AND hit_date > CURRENT_DATE - 30`;
+
+  const porAgente = await sql`
+    SELECT user_agent, SUM(hit_count)::int AS hits, MAX(hit_date) AS ultima
+      FROM ai_crawler_hits
+     WHERE client_id = ${client.id} AND hit_date > CURRENT_DATE - 30
+     GROUP BY user_agent ORDER BY hits DESC`;
+
+  const vistos = new Set(porAgente.map((a) => a.user_agent));
+  const faltando = ESSENCIAIS_GEO.filter((a) => !vistos.has(a));
 
   const temGsc = artigos.some((a) => a.metric_date);
   const primeiro = artigos[0]?.first_published_at;
@@ -102,6 +112,21 @@ ${artigos.length ? `<table>
 </table>
 ${!temGsc ? '<p class="note">As colunas de busca ficam vazias até a Search Console entregar dados.</p>' : ''}`
   : '<div class="empty"><strong>Nenhum artigo publicado</strong>Publique pelo menos um para haver o que medir.</div>'}
+
+<h2 class="sec">Crawlers de IA (30 dias)</h2>
+${porAgente.length ? `<table>
+  <thead><tr><th>Agente</th><th>Visitas</th><th>Última</th></tr></thead>
+  <tbody>${porAgente.map((a) => `<tr>
+    <td>${esc(a.user_agent)} ${ESSENCIAIS_GEO.includes(a.user_agent) ? '<span class="pill">essencial</span>' : ''}</td>
+    <td class="num">${a.hits}</td>
+    <td class="num">${new Date(a.ultima).toLocaleDateString('pt-BR')}</td>
+  </tr>`).join('')}</tbody></table>
+${faltando.length ? `<p class="note">Nunca visitaram: <strong>${faltando.map(esc).join(', ')}</strong>.
+Sem a visita desses agentes, citação em resposta de IA é impossível — mesmo com o robots.txt liberado.</p>`
+  : '<p class="note">Os três agentes essenciais para citação em IA estão visitando o site.</p>'}`
+  : `<div class="empty"><strong>Nenhuma visita registrada</strong>
+     O Drain da Vercel precisa estar apontando para <code>/api/logs</code>.
+     Liberar um agente no robots.txt não prova que ele visita — este é o único sinal que prova.</div>`}
 
 <h2 class="sec">Orçamento</h2>
 <p class="note">${dinheiro(orcamento?.spent_usd)} de ${dinheiro(orcamento?.monthly_budget_usd)} neste mês.

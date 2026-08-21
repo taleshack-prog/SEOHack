@@ -49,6 +49,9 @@
     },
     "api/ui/sync-clusters.mjs": {
       "maxDuration": 120
+    },
+    "api/logs.mjs": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

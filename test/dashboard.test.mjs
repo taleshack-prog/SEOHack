@@ -182,3 +182,27 @@ test('geração pelo painel roda em segundo plano com waitUntil', async () => {
   assert.match(src, /waitUntil/, 'sem waitUntil a função morre antes de terminar');
   assert.match(src, /status = 'running'/, 'sem trava de execução concorrente');
 });
+
+// --- regressão: regra de link interno aplicada em só um dos dois caminhos ---
+// O artigo passou na geração e reprovou na publicação, porque o content-engine
+// passava existingSlugs ao validador e o review.mjs não. Mesma regra, dois
+// resultados. Este teste garante que os dois caminhos recebem o mesmo contexto.
+test('geração e publicação passam existingSlugs ao validador', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const ler = (p) => readFile(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8');
+  for (const arquivo of ['lib/content-engine.mjs', 'api/ui/review.mjs']) {
+    const src = await ler(arquivo);
+    const chamada = src.slice(src.indexOf('validateArticle('), src.indexOf('validateArticle(') + 400);
+    assert.match(chamada, /existingSlugs/, `${arquivo} valida sem existingSlugs`);
+  }
+});
+
+test('um só parser decide se o artigo tem nota do operador', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(fileURLToPath(new URL('../lib/content-engine.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /parseNotes\(markdown\)\.length/, 'não usa o mesmo parser da tela de revisão');
+  assert.ok(!src.includes('includes(OPERATOR_MARKER)'),
+    'ainda usa includes(), que pode discordar do parseNotes');
+});

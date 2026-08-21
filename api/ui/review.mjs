@@ -85,15 +85,20 @@ export default requireAuth(async (req, res) => {
   const agora = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   const frontmatter = { ...article.frontmatter, draft: false, updatedAt: agora };
 
-  const check = validateArticle({ slug: article.slug, frontmatter, markdown }, client.adapter_config);
+  // A lista de artigos já publicados PRECISA vir junto: sem ela o validador
+  // volta a exigir 2 links internos, o que é impossível num blog vazio. O
+  // content-engine já fazia isso; aqui ficou de fora, e o artigo passou na
+  // geração para reprovar só na hora de publicar.
+  const publicados = await sql`
+    SELECT slug, title, first_published_at, content_updated_at FROM articles
+     WHERE client_id = ${client.id} AND status = 'published'`;
+
+  const check = validateArticle({ slug: article.slug, frontmatter, markdown },
+    { ...client.adapter_config, existingSlugs: publicados.map((a) => a.slug) });
   if (!check.valid) {
     const motivo = check.errors.map((e) => e.detail).join('; ');
     return send(res, render({ ...article, markdown }, { erro: `Não publicado: ${motivo}` }), 422);
   }
-
-  const publicados = await sql`
-    SELECT slug, first_published_at, content_updated_at FROM articles
-     WHERE client_id = ${client.id} AND status = 'published'`;
 
   try {
     const r = await publishViaAdapter(client, [{ slug: article.slug, markdown, frontmatter }], publicados);

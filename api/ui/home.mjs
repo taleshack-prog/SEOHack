@@ -39,10 +39,25 @@ export default requireAuth(async (req, res) => {
     SELECT COUNT(*)::int AS n FROM articles
      WHERE client_id = ${client.id} AND status = 'published'`;
 
+  // Pilar sem seção de links é beco sem saída: recebe autoridade dos satélites
+  // e não devolve. O painel precisa mostrar isso, senão a lacuna fica invisível.
+  const pilaresDessincronizados = await sql`
+    SELECT a.slug, a.title, a.cluster,
+           (SELECT COUNT(*)::int FROM articles s
+             WHERE s.client_id = a.client_id AND s.cluster = a.cluster
+               AND s.status = 'published' AND NOT s.is_pillar) AS satelites
+      FROM articles a
+     WHERE a.client_id = ${client.id} AND a.status = 'published' AND a.is_pillar
+       AND POSITION('## Continue neste cluster' IN COALESCE(a.markdown, '')) = 0`;
+
+  const precisaSync = pilaresDessincronizados.filter((p) => p.satelites > 0);
+
   let flash = null;
   if (req.query?.iniciado) flash = { text: 'Produção iniciada. Leva de 2 a 5 minutos — atualize a página para acompanhar.' };
   else if (req.query?.aviso === 'ja-rodando') flash = { text: 'Já existe uma produção em andamento.', bad: true };
   else if (req.query?.ok) flash = { text: `Publicado. ${esc(req.query.ok)} está no ar.` };
+  else if (req.query?.clusters === 'ja-sincronizado') flash = { text: 'Todos os pilares já estavam sincronizados.' };
+  else if (req.query?.clusters) flash = { text: `Pilares atualizados com links para os satélites (${esc(req.query.clusters)}).` };
   else if (!rodando && run && run.items_succeeded < run.items_processed) {
     // 'partial' = rodou, gastou tokens, e nada foi publicado. Sem este aviso o
     // operador via só o contador de custo subir, sem saber o porquê.
@@ -93,6 +108,18 @@ ${held.length
 
 <h2 class="sec">Produção</h2>
 ${producao}
+
+${precisaSync.length ? `<h2 class="sec">Estrutura dos clusters</h2>
+<div class="running" style="border-left-color:var(--proof)">
+  <div>
+    <strong>${precisaSync.length === 1 ? 'Um pilar sem links de saída' : `${precisaSync.length} pilares sem links de saída`}</strong>
+    <span class="note">${precisaSync.map((p) => `“${esc(p.title)}” recebe link de ${p.satelites} ${p.satelites === 1 ? 'satélite' : 'satélites'} e não devolve nenhum.`).join(' ')}
+    Sem os links de volta, a página que deveria distribuir autoridade do cluster vira beco sem saída.</span>
+  </div>
+  <form method="POST" action="/api/ui/sync-clusters" style="margin-left:auto">
+    <button type="submit">Sincronizar</button>
+  </form>
+</div>` : ''}
 
 <h2 class="sec">Fila de tópicos</h2>
 ${topics.length ? `<table>

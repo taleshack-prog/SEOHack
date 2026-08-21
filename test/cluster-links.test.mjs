@@ -92,3 +92,43 @@ test('nada muda se a seção já está correta', () => {
     : a);
   assert.equal(pillarsToRefresh(atualizado, ['quanto-custa-saas'], site).length, 0);
 });
+
+// --- sincronização manual pelo painel ---
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+const ler = (p) => readFile(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8');
+
+test('sincronização manual cobre pilar de cluster já completo', () => {
+  // A automática só dispara ao publicar satélite. O cluster saas já estava
+  // completo quando a função nasceu, então nunca seria corrigido sozinho.
+  const completo = [
+    { slug: 'pilar-saas', title: 'Pilar', cluster: 'saas', is_pillar: true, markdown: pilarMd, first_published_at: '2026-08-20' },
+    { slug: 'sat-1', title: 'S1', cluster: 'saas', is_pillar: false, markdown: 'x', first_published_at: '2026-08-21' },
+    { slug: 'sat-2', title: 'S2', cluster: 'saas', is_pillar: false, markdown: 'x', first_published_at: '2026-08-21' },
+  ];
+  // Nenhuma publicação nova → automática não faz nada
+  assert.equal(pillarsToRefresh(completo, [], site).length, 0);
+  // Sincronização manual passa todos os satélites → pilar entra na lista
+  const todos = completo.filter((a) => !a.is_pillar).map((a) => a.slug);
+  const r = pillarsToRefresh(completo, todos, site);
+  assert.equal(r.length, 1);
+  assert.equal((r[0].markdown.match(/\]\(\/blog\//g) || []).length, 2);
+});
+
+test('endpoint de sync não chama o LLM', async () => {
+  const src = await ler('api/ui/sync-clusters.mjs');
+  assert.ok(!src.includes('complete('), 'sync deveria ser custo zero');
+  assert.ok(!src.includes('llm.mjs'), 'sync importou o wrapper de LLM');
+  assert.match(src, /requireAuth/, 'endpoint sem autenticação');
+});
+
+test('painel detecta pilar sem a seção de links', async () => {
+  const src = await ler('api/ui/home.mjs');
+  assert.match(src, /Continue neste cluster/, 'não detecta pilar dessincronizado');
+  assert.match(src, /sync-clusters/, 'sem botão de sincronizar');
+});
+
+test('sync tem duração declarada no vercel.json', async () => {
+  const j = JSON.parse(await ler('vercel.json'));
+  assert.ok(j.functions['api/ui/sync-clusters.mjs']?.maxDuration >= 60);
+});

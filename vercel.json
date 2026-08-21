@@ -46,6 +46,9 @@
     "api/ui/generate.mjs": {
       "maxDuration": 600,
       "includeFiles": "prompts/**"
+    },
+    "api/ui/sync-clusters.mjs": {
+      "maxDuration": 120
     }
   },
   "rewrites": [

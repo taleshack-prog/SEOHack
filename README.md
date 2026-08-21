@@ -114,6 +114,19 @@ há impressões residuais para ler. Enquanto o `/blog` não passar de 200
 impressões/dia, o motor opera em **modo seed** e a entrada vem daqui. O gate
 seed → gsc é automático, por volume, não por data.
 
+## O override de `htmlparser2` em `package.json`
+
+Não remova. O `sanitize-html` é CommonJS mas passou a depender de
+`htmlparser2` v12, que é ESM puro — combinação que só funciona em runtime com
+suporte a `require()` de ESM. O runtime de funções da Vercel não tem, e o
+deploy quebra com `ERR_REQUIRE_ESM` **apenas em produção**: local passa, os
+testes passam, e a falha só aparece na primeira invocação real.
+
+O override fixa o parser em `^9.1.0`, a última versão CommonJS. Dois testes em
+`test/render.test.mjs` travam isso: um carrega o sanitizador por `require()`
+reproduzindo o caminho que falhou, outro verifica que o parser resolvido não é
+ESM.
+
 ## Painel de operação
 
 O painel é onde você trabalha. URL raiz do projeto na Vercel, protegido por senha.

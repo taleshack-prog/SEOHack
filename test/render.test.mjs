@@ -133,3 +133,49 @@ test('índice vazio não quebra', () => {
   const html = renderIndex({ articles: [], site, shell });
   assert.match(html, /Em breve/);
 });
+
+// --- regressão: quebra em produção por dependência ESM ---
+// O deploy falhou com ERR_REQUIRE_ESM porque sanitize-html (CommonJS) passou a
+// depender de htmlparser2 v12, que é ESM puro. Isso só funciona em runtime com
+// suporte a require(esm) — o da Vercel não tinha. Um override fixa o parser na
+// última versão CommonJS. Este teste reproduz exatamente o caminho que falhou.
+import { createRequire } from 'node:module';
+
+test('sanitize-html carrega por require() sem ERR_REQUIRE_ESM', () => {
+  const require = createRequire(import.meta.url);
+  const sanitize = require('sanitize-html');
+  assert.equal(typeof sanitize, 'function');
+  assert.equal(sanitize('<p>ok</p><script>x</script>', { allowedTags: ['p'] }), '<p>ok</p>');
+});
+
+test('htmlparser2 resolvido é CommonJS', async () => {
+  // O package.json não é exportado pelo campo "exports", então lemos do disco.
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const caminho = fileURLToPath(new URL('../node_modules/htmlparser2/package.json', import.meta.url));
+  const pkg = JSON.parse(await readFile(caminho, 'utf8'));
+  assert.notEqual(pkg.type, 'module',
+    `htmlparser2 ${pkg.version} voltou a ser ESM — o override em package.json falhou`);
+});
+
+// --- CVE GHSA-vccv-cmxp-4j9h: javascript: via atributos de formulário/mídia ---
+// A whitelist já não permite esses atributos, mas o teste trava a garantia:
+// se alguém afrouxar allowedAttributes no futuro, isto quebra primeiro.
+test('atributos vetados pelo CVE não sobrevivem à sanitização', () => {
+  const ataques = [
+    '<form action="javascript:alert(1)"><button formaction="javascript:alert(1)">x</button></form>',
+    '<video poster="javascript:alert(1)"></video>',
+    '<body background="javascript:alert(1)">',
+    '<object data="javascript:alert(1)"></object>',
+    '<a href="javascript:alert(1)">clique</a>',
+    '<img src="javascript:alert(1)">',
+  ];
+  for (const ataque of ataques) {
+    const html = renderPage({ slug: 'x', frontmatter: fm, site, markdown: md + '\n\n' + ataque });
+    const corpo = html.slice(html.indexOf('<article>'));
+    assert.ok(!/javascript\s*:/i.test(corpo), `passou: ${ataque}`);
+    for (const attr of ['formaction', 'poster', 'background', 'action=']) {
+      assert.ok(!corpo.includes(attr), `atributo "${attr}" sobreviveu`);
+    }
+  }
+});

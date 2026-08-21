@@ -13,12 +13,17 @@
     "secrets": "node scripts/gen-secrets.mjs",
     "test": "node --test test/*.test.mjs",
     "dev": "vercel dev",
-    "doctor": "node --env-file=.env scripts/doctor.mjs"
+    "doctor": "node --env-file=.env scripts/doctor.mjs",
+    "configure": "node --env-file=.env scripts/configure-target.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
     "google-auth-library": "^11.0.2",
     "marked": "^18.0.10",
     "sanitize-html": "^2.17.7"
-  }
+  },
+  "overrides": {
+    "htmlparser2": "^9.1.0"
+  },
+  "_notes": {}
 }

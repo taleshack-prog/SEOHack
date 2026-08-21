@@ -6,7 +6,7 @@
 // O modo profundo faz chamadas reais e custa frações de centavo. Fica opcional
 // para que monitoramento automático não gaste dinheiro a cada minuto.
 import { sql, getClient } from '../lib/db.mjs';
-import { checkEnv, checkLlm, checkAdapter } from '../lib/checks.mjs';
+import { checkEnv, checkLlm, checkAdapter, checkPrompt } from '../lib/checks.mjs';
 
 export default async function handler(req, res) {
   const deep = req.query?.deep === '1';
@@ -31,6 +31,9 @@ export default async function handler(req, res) {
     }
   }
 
+  // Barato e sem rede: entra no modo rápido, não só no profundo.
+  out.checks.prompt = await checkPrompt();
+
   const env = checkEnv(client?.publish_adapter);
   out.checks.missingEnv = env.missing;
   out.checks.optionalMissing = env.optionalMissing;
@@ -40,7 +43,7 @@ export default async function handler(req, res) {
     if (client) out.checks.publishTarget = await checkAdapter(client);
   }
 
-  out.ok = Boolean(out.checks.db) && env.missing.length === 0
+  out.ok = Boolean(out.checks.db) && env.missing.length === 0 && out.checks.prompt.ok
     && (!deep || (out.checks.llm?.ok && out.checks.publishTarget?.ok));
 
   res.statusCode = out.ok ? 200 : 503;

@@ -116,3 +116,69 @@ test('senha do painel é obrigatória em qualquer adapter', () => {
   try { assert.ok(checkEnv('github').missing.includes('DASHBOARD_PASSWORD')); }
   finally { process.env.DASHBOARD_PASSWORD = antes; }
 });
+
+// --- regressão: prompt não empacotado (ENOENT em produção) ---
+const { checkPrompt } = await import('../lib/checks.mjs');
+
+test('prompt real é encontrado e tem conteúdo', async () => {
+  const r = await checkPrompt();
+  assert.equal(r.ok, true, r.reason);
+  assert.ok(r.bytes > 1000, `prompt com apenas ${r.bytes} bytes`);
+});
+
+test('prompt ausente dá mensagem que aponta o includeFiles', async () => {
+  const r = await checkPrompt('nao-existe.md');
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /includeFiles/);
+});
+
+test('vercel.json empacota prompts em todos os crons', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const j = JSON.parse(await readFile(fileURLToPath(new URL('../vercel.json', import.meta.url)), 'utf8'));
+  const crons = Object.keys(j.functions).filter((f) => f.startsWith('api/cron/'));
+  assert.ok(crons.length >= 5, 'esperava 5 crons configurados');
+  for (const c of crons) {
+    assert.equal(j.functions[c].includeFiles, 'prompts/**', `${c} sem includeFiles`);
+  }
+});
+
+test('todo cron declarado tem arquivo correspondente', async () => {
+  const { access } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const j = JSON.parse(await (await import('node:fs/promises'))
+    .readFile(fileURLToPath(new URL('../vercel.json', import.meta.url)), 'utf8'));
+  for (const { path } of j.crons) {
+    const arquivo = fileURLToPath(new URL(`..${path}.mjs`, import.meta.url));
+    await access(arquivo);   // lança se não existir
+  }
+});
+
+// --- disparo de produção pelo painel ---
+test('meta refresh só aparece quando há produção rodando', () => {
+  assert.match(page({ title: 'x', body: '', refresh: 20 }), /http-equiv="refresh" content="20"/);
+  assert.ok(!page({ title: 'x', body: '' }).includes('http-equiv="refresh"'));
+});
+
+test('cron e painel usam o mesmo módulo de geração', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const ler = (p) => readFile(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8');
+  const cron = await ler('api/cron/content.mjs');
+  const ui = await ler('api/ui/generate.mjs');
+  for (const [nome, src] of [['cron', cron], ['painel', ui]]) {
+    assert.match(src, /generateBatch/, `${nome} não chama generateBatch`);
+    assert.match(src, /content-engine\.mjs/, `${nome} não importa o módulo compartilhado`);
+  }
+  // Nenhum dos dois pode ter cópia da lógica.
+  assert.ok(!cron.includes('generateOutline'), 'lógica duplicada no cron');
+  assert.ok(!ui.includes('generateOutline'), 'lógica duplicada no painel');
+});
+
+test('geração pelo painel roda em segundo plano com waitUntil', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(fileURLToPath(new URL('../api/ui/generate.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /waitUntil/, 'sem waitUntil a função morre antes de terminar');
+  assert.match(src, /status = 'running'/, 'sem trava de execução concorrente');
+});

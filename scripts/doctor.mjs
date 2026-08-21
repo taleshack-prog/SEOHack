@@ -4,7 +4,7 @@
 //
 // Uso: npm run doctor
 import { sql, getClient } from '../lib/db.mjs';
-import { checkEnv, checkLlm, checkAdapter } from '../lib/checks.mjs';
+import { checkEnv, checkLlm, checkAdapter, checkPrompt } from '../lib/checks.mjs';
 
 const ok = (s) => `\x1b[32m✓\x1b[0m ${s}`;
 const no = (s) => `\x1b[31m✗\x1b[0m ${s}`;
@@ -23,6 +23,10 @@ const env = checkEnv(client.publish_adapter);
 if (env.missing.length) { falhas++; console.log(no(`Faltando: ${env.missing.join(', ')}`)); }
 else console.log(ok('Variáveis obrigatórias presentes'));
 if (env.optionalMissing.length) console.log(wa(`Opcionais vazias: ${env.optionalMissing.join(', ')}`));
+
+const prompt = await checkPrompt();
+if (prompt.ok) console.log(ok(`Prompt carregado · ${prompt.prompt} (${prompt.bytes} bytes)`));
+else { falhas++; console.log(no(`Prompt: ${prompt.reason}`)); }
 
 process.stdout.write('  testando o LLM… ');
 const llm = await checkLlm();

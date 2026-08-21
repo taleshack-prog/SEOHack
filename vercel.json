@@ -42,6 +42,10 @@
     "api/cron/optimization.mjs": {
       "maxDuration": 800,
       "includeFiles": "prompts/**"
+    },
+    "api/ui/generate.mjs": {
+      "maxDuration": 600,
+      "includeFiles": "prompts/**"
     }
   },
   "rewrites": [

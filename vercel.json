@@ -24,19 +24,24 @@
   ],
   "functions": {
     "api/cron/research.mjs": {
-      "maxDuration": 120
+      "maxDuration": 120,
+      "includeFiles": "prompts/**"
     },
     "api/cron/content.mjs": {
-      "maxDuration": 600
+      "maxDuration": 600,
+      "includeFiles": "prompts/**"
     },
     "api/cron/tracking.mjs": {
-      "maxDuration": 180
+      "maxDuration": 180,
+      "includeFiles": "prompts/**"
     },
     "api/cron/citation.mjs": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "includeFiles": "prompts/**"
     },
     "api/cron/optimization.mjs": {
-      "maxDuration": 800
+      "maxDuration": 800,
+      "includeFiles": "prompts/**"
     }
   },
   "rewrites": [

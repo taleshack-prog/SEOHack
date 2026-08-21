@@ -128,3 +128,40 @@ test('caminho de produto vem do cliente, não do padrão da HTF', () => {
     { productPaths: ['/produtos'], existingSlugs: [] });
   assert.ok(nao.errors.some((e) => e.rule === 'product_links'));
 });
+
+// --- PRD 8.1 refinado: exemplo de cálculo não é estatística de mercado ---
+const comTexto = (extra) => `## Como calcular
+${'palavra '.repeat(900)}
+[guia](/blog/x) [produtos](/produtos)
+${extra}`;
+
+const soErro = (md, regra) =>
+  validateArticle({ slug: 'calcular-mrr', frontmatter: base(), markdown: md },
+    { productPaths: ['/produtos'], existingSlugs: ['x'] })
+    .errors.some((e) => e.rule === regra);
+
+test('regressão: exemplo hipotético de cálculo não exige fonte', () => {
+  // Este era o erro real que reprovou o artigo de MRR/churn/LTV.
+  const md = comTexto('\n\nSuponha um SaaS com 100 clientes pagando R$ 50 por mês. O MRR é R$ 5.000.');
+  assert.equal(soErro(md, 'unsourced_statistic'), false);
+});
+
+test('parágrafo com fórmula não exige fonte', () => {
+  const md = comTexto('\n\nO churn é calculado assim: 5 cancelamentos dividido por 100 clientes = 5%.');
+  assert.equal(soErro(md, 'unsourced_statistic'), false);
+});
+
+test('afirmação sobre o mercado continua exigindo fonte', () => {
+  const md = comTexto('\n\nO churn médio do mercado brasileiro de SaaS é de 8% ao mês.');
+  assert.equal(soErro(md, 'unsourced_statistic'), true);
+});
+
+test('afirmação sobre o mercado com fonte passa', () => {
+  const md = comTexto('\n\nO churn médio fica em 8% segundo o [relatório anual](https://exemplo.gov.br/dados).');
+  assert.equal(soErro(md, 'unsourced_statistic'), false);
+});
+
+test('número em tabela e em bloco de código não é cobrado', () => {
+  const md = comTexto('\n\n| Plano | Preço |\n| --- | --- |\n| Pro | R$ 199 |\n\n```js\nconst taxa = 0.15;\n```');
+  assert.equal(soErro(md, 'unsourced_statistic'), false);
+});

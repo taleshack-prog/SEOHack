@@ -113,6 +113,17 @@ test('índice lista os artigos com URL sem .html (cleanUrls)', () => {
   assert.ok(!html.includes('.html"'), 'gerou link com extensão');
 });
 
+test('índice não depende de CSS que o site não tem', () => {
+  const html = renderIndex({ articles: publicados, site, shell });
+  const miolo = html.slice(html.indexOf('<main>'), html.indexOf('</main>'));
+  // <ul><li> deixava marcador de lista solto num site que não estiliza .post-list
+  assert.ok(!miolo.includes('<ul'), 'voltou a usar lista');
+  assert.ok(!miolo.includes('class="post'), 'voltou a usar classe própria');
+  assert.match(miolo, /<article>/);
+  // afordância explícita: não depende de o site colorir links dentro de h2
+  assert.match(miolo, /Ler artigo/);
+});
+
 test('índice injeta cabeçalho, rodapé e script do site', () => {
   const html = renderIndex({ articles: publicados, site, shell });
   assert.match(html, /<header id="nav">MENU<\/header>/);

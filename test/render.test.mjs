@@ -87,3 +87,49 @@ test('título com aspas não quebra o HTML', () => {
   assert.ok(!/<title>.*<script>/.test(html));
   assert.match(html, /&quot;melhor&quot;/);
 });
+
+// --- índice do blog e shell do cliente ---
+import { renderIndex } from '../lib/render.mjs';
+
+const publicados = [
+  { slug: 'arquitetura-saas', title: 'Arquitetura SaaS em 2026',
+    description: 'Guia técnico.', cluster: 'saas',
+    first_published_at: '2026-08-19T10:00:00Z', content_updated_at: '2026-08-19T10:00:00Z' },
+  { slug: 'gas-fees-evm', title: 'Gas fees na EVM',
+    description: 'Como estimar.', cluster: 'web3',
+    first_published_at: '2026-08-18T10:00:00Z', content_updated_at: '2026-08-18T10:00:00Z' },
+];
+
+const shell = {
+  head: '<link rel="stylesheet" href="https://fonts.example/x.css">',
+  headerHtml: '<header id="nav">MENU</header>',
+  footerHtml: '<footer>RODAPE</footer>',
+  bodyEnd: '<script src="/js/site.js" defer></script>',
+};
+
+test('índice lista os artigos com URL sem .html (cleanUrls)', () => {
+  const html = renderIndex({ articles: publicados, site, shell });
+  assert.match(html, /href="\/blog\/arquitetura-saas"/);
+  assert.ok(!html.includes('.html"'), 'gerou link com extensão');
+});
+
+test('índice injeta cabeçalho, rodapé e script do site', () => {
+  const html = renderIndex({ articles: publicados, site, shell });
+  assert.match(html, /<header id="nav">MENU<\/header>/);
+  assert.match(html, /<footer>RODAPE<\/footer>/);
+  assert.match(html, /<script src="\/js\/site\.js" defer><\/script>/);
+});
+
+test('CSP: o script do site fica no fim do body, não inline', () => {
+  const html = renderPage({ slug: 'x', frontmatter: fm, markdown: md, site, shell });
+  const posScript = html.indexOf('/js/site.js');
+  const posFooter = html.indexOf('RODAPE');
+  assert.ok(posScript > posFooter, 'script deveria vir depois do rodapé');
+  // JSON-LD é bloco de dados, não é barrado por script-src 'self'
+  assert.match(html, /<script type="application\/ld\+json">/);
+});
+
+test('índice vazio não quebra', () => {
+  const html = renderIndex({ articles: [], site, shell });
+  assert.match(html, /Em breve/);
+});

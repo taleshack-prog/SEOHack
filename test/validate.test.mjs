@@ -165,3 +165,37 @@ test('número em tabela e em bloco de código não é cobrado', () => {
   const md = comTexto('\n\n| Plano | Preço |\n| --- | --- |\n| Pro | R$ 199 |\n\n```js\nconst taxa = 0.15;\n```');
   assert.equal(soErro(md, 'unsourced_statistic'), false);
 });
+
+// --- ordem de grandeza técnica não é estatística de mercado ---
+test('regressão: "2.000 schemas" não reprova artigo técnico', () => {
+  // Este era o erro real no artigo de multi-tenancy no PostgreSQL.
+  const md = comTexto('\n\nCada schema multiplica objetos no catálogo, e acima de 2.000 schemas o planejador começa a sofrer.');
+  assert.equal(soErro(md, 'unsourced_statistic'), false);
+});
+
+test('número grande apresentado como dado apurado ainda exige fonte', () => {
+  const md = comTexto('\n\nSegundo levantamento do mercado, 15.000 empresas migraram para multi-tenancy.');
+  assert.equal(soErro(md, 'unsourced_statistic'), true);
+});
+
+test('percentual continua exigindo fonte sempre', () => {
+  assert.equal(soErro(comTexto('\n\nO ganho de performance chega a 40% nesse cenário.'), 'unsourced_statistic'), true);
+});
+
+test('valor em moeda continua exigindo fonte sempre', () => {
+  assert.equal(soErro(comTexto('\n\nO custo médio de infraestrutura fica em R$ 890 por mês.'), 'unsourced_statistic'), true);
+});
+
+test('multiplicador continua exigindo fonte sempre', () => {
+  assert.equal(soErro(comTexto('\n\nA consulta fica 3x mais rápida com o índice parcial.'), 'unsourced_statistic'), true);
+});
+
+test('ordens de grandeza comuns em texto técnico passam', () => {
+  for (const frase of [
+    'O limite prático fica em torno de 10.000 conexões simultâneas.',
+    'Um índice sobre 1.000.000 de linhas ocupa espaço considerável.',
+    'A tabela cresce até 50.000 registros por dia nesse desenho.',
+  ]) {
+    assert.equal(soErro(comTexto(`\n\n${frase}`), 'unsourced_statistic'), false, frase);
+  }
+});

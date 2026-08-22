@@ -17,3 +17,26 @@ test('custo de um artigo típico fica abaixo de US$ 0,10', () => {
 test('D9: modelo desconhecido devolve 0 sem lançar', () => {
   assert.equal(estimateCost('modelo-inexistente', 1000, 1000), 0);
 });
+
+// --- custo por artigo (o painel mostrava US$ 0,00 com total > 0) ---
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+const ler = (p) => readFile(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8');
+
+test('recordUsage devolve o id para amarrar ao artigo depois', async () => {
+  const src = await ler('lib/budget.mjs');
+  assert.match(src, /RETURNING id/, 'sem id não há como ligar ao artigo');
+  assert.match(src, /export async function linkUsage/);
+});
+
+test('o motor amarra outline e draft ao artigo criado', async () => {
+  const src = await ler('lib/content-engine.mjs');
+  assert.match(src, /linkUsage\(client\.id, article\.id/, 'custo continua órfão');
+  assert.match(src, /outline\._usageId/);
+});
+
+test('falha de validação diz qual dado foi acusado', async () => {
+  const src = await ler('lib/content-engine.mjs');
+  // Só o nome da regra não permite julgar se o problema é do texto ou da regra.
+  assert.match(src, /e\.rule\} \(\$\{e\.detail\}\)/, 'mensagem sem o detalhe do erro');
+});

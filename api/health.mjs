@@ -6,7 +6,7 @@
 // O modo profundo faz chamadas reais e custa frações de centavo. Fica opcional
 // para que monitoramento automático não gaste dinheiro a cada minuto.
 import { sql, getClient } from '../lib/db.mjs';
-import { checkEnv, checkLlm, checkAdapter, checkPrompt } from '../lib/checks.mjs';
+import { checkEnv, checkLlm, checkAdapter, checkPrompt, checkGsc } from '../lib/checks.mjs';
 
 export default async function handler(req, res) {
   const deep = req.query?.deep === '1';
@@ -41,6 +41,7 @@ export default async function handler(req, res) {
   if (deep) {
     out.checks.llm = await checkLlm();
     if (client) out.checks.publishTarget = await checkAdapter(client);
+    out.checks.searchConsole = await checkGsc();
   }
 
   out.ok = Boolean(out.checks.db) && env.missing.length === 0 && out.checks.prompt.ok

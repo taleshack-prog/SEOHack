@@ -231,3 +231,33 @@ test('tela de desempenho não inventa número quando não há dado', async () =>
 test('navegação leva ao desempenho', () => {
   assert.match(page({ title: 'x', body: '' }), /href="\/desempenho"/);
 });
+
+// --- Search Console: a variável existir não prova acesso ---
+const { checkGsc } = await import('../lib/checks.mjs');
+
+test('sem credenciais, a checagem é pulada e não conta como falha', async () => {
+  const antes = { ...process.env };
+  for (const k of ['GSC_CLIENT_EMAIL', 'GSC_PRIVATE_KEY', 'GSC_PROPERTY']) delete process.env[k];
+  try {
+    const r = await checkGsc();
+    assert.equal(r.skipped, true);
+    assert.match(r.reason, /faltando/);
+  } finally { Object.assign(process.env, antes); }
+});
+
+test('403 é traduzido para o passo que faltou', async () => {
+  const src = await (await import('node:fs/promises'))
+    .readFile((await import('node:url')).fileURLToPath(new URL('../lib/checks.mjs', import.meta.url)), 'utf8');
+  // O erro mais comum da configuração: criar a service account no Google Cloud
+  // e esquecer de adicioná-la como usuária da propriedade.
+  assert.match(src, /Usuários e permissões/);
+  assert.match(src, /sc-domain:/, 'não orienta sobre o formato da propriedade');
+  assert.match(src, /googleSaid/, 'esconde a mensagem crua do Google');
+});
+
+test('zero linhas não é tratado como erro', async () => {
+  const src = await (await import('node:fs/promises'))
+    .readFile((await import('node:url')).fileURLToPath(new URL('../lib/checks.mjs', import.meta.url)), 'utf8');
+  // Dado tem 2-3 dias de atraso; site novo legitimamente devolve vazio.
+  assert.match(src, /ainda sem dados nesta janela/);
+});

@@ -4,7 +4,7 @@
 //
 // Uso: npm run doctor
 import { sql, getClient } from '../lib/db.mjs';
-import { checkEnv, checkLlm, checkAdapter, checkPrompt } from '../lib/checks.mjs';
+import { checkEnv, checkLlm, checkAdapter, checkPrompt, checkGsc } from '../lib/checks.mjs';
 
 const ok = (s) => `\x1b[32m✓\x1b[0m ${s}`;
 const no = (s) => `\x1b[31m✗\x1b[0m ${s}`;
@@ -40,6 +40,18 @@ const alvo = await checkAdapter(client);
 console.log('\r' + (alvo.ok ? ok(`Destino acessível · ${alvo.repo || alvo.adapter}`) : no(`Destino: ${alvo.reason}`)));
 if (alvo.targetSaid) console.log(`    destino respondeu: ${alvo.targetSaid}`);
 if (!alvo.ok) falhas++;
+
+process.stdout.write('  testando a Search Console… ');
+const gsc = await checkGsc();
+if (gsc.skipped) console.log('\r' + wa(`Search Console: ${gsc.reason}`));
+else if (gsc.ok) {
+  console.log('\r' + ok(`Search Console · ${gsc.property} · ${gsc.rows} linhas em ${gsc.window}`));
+  if (gsc.note) console.log(`    ${gsc.note}`);
+} else {
+  falhas++;
+  console.log('\r' + no(`Search Console: ${gsc.reason}`));
+  if (gsc.googleSaid) console.log(`    Google respondeu: ${gsc.googleSaid}`);
+}
 
 const [b] = await sql`SELECT * FROM v_budget_status WHERE client_id = ${client.id}`;
 console.log(ok(`Orçamento: US$ ${Number(b.spent_usd).toFixed(2)} de ${b.monthly_budget_usd}`));

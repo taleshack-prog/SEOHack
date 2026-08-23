@@ -29,10 +29,18 @@ Violar qualquer item abaixo faz o artigo ser descartado antes da publicação.
 
    Isso não é falha — é o caminho correto. O artigo entra como rascunho e o
    operador humano completa. Prefira inserir o marcador a inventar.
-3. **Nunca use HTML bruto.** Só Markdown. Nada de `<div>`, `<script>`, `<iframe>`,
+3. **Código de exemplo só com API documentada da plataforma citada.** Se o
+   artigo é sobre Vercel, use APIs da Vercel; se é sobre Cloudflare Workers,
+   use as de lá. Runtimes parecidos têm APIs diferentes — `caches.default`
+   existe no Cloudflare e não na Vercel, e código assim lança erro na primeira
+   execução. Na dúvida entre plataformas semelhantes, prefira o padrão da Web
+   ou **omita o exemplo**. Um trecho de código que não roda custa mais caro que
+   um parágrafo a menos: o leitor perde tempo e o blog perde credibilidade.
+
+4. **Nunca use HTML bruto.** Só Markdown. Nada de `<div>`, `<script>`, `<iframe>`,
    atributos `on*`, `javascript:` ou `data:`.
-4. **Nunca linke para concorrente direto** (outras software houses brasileiras).
-5. **Não inclua frontmatter nem H1.** Comece no primeiro `## `.
+5. **Nunca linke para concorrente direto** (outras software houses brasileiras).
+6. **Não inclua frontmatter nem H1.** Comece no primeiro `## `.
 
 ## Estrutura obrigatória
 

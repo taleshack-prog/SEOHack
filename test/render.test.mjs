@@ -190,3 +190,28 @@ test('atributos vetados pelo CVE não sobrevivem à sanitização', () => {
     }
   }
 });
+
+// --- dateModified: republicação não é revisão ---
+import { alteracaoReal } from '../lib/render.mjs';
+
+test('regressão: republicação 20 min depois não vira dateModified', () => {
+  // O artigo saiu com datePublished 18:56 e dateModified 19:16 — efeito de uma
+  // republicação, não de revisão. Não diz nada ao leitor nem ao Google.
+  const fm20min = { publishedAt: '2026-08-22T18:56:00Z', updatedAt: '2026-08-22T19:16:00Z' };
+  assert.equal(alteracaoReal(fm20min), false);
+  const ld = buildJsonLd({ frontmatter: { ...fm, ...fm20min }, html: '', url: 'u', siteName: 's' });
+  assert.equal(ld['@graph'][0].dateModified, ld['@graph'][0].datePublished);
+});
+
+test('revisão real no dia seguinte conta', () => {
+  const fmReal = { publishedAt: '2026-08-22T10:00:00Z', updatedAt: '2026-08-25T10:00:00Z' };
+  assert.equal(alteracaoReal(fmReal), true);
+  const ld = buildJsonLd({ frontmatter: { ...fm, ...fmReal }, html: '', url: 'u', siteName: 's' });
+  assert.equal(ld['@graph'][0].dateModified, '2026-08-25T10:00:00Z');
+});
+
+test('página não exibe "atualizado em" para republicação', () => {
+  const html = renderPage({ slug: 'x', site, markdown: md,
+    frontmatter: { ...fm, publishedAt: '2026-08-22T18:56:00Z', updatedAt: '2026-08-22T19:16:00Z' } });
+  assert.ok(!html.includes('atualizado em'));
+});

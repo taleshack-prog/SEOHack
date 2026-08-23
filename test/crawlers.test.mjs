@@ -85,3 +85,38 @@ test('header de verificação sai em toda resposta', () => {
 test('endpoint rejeita sem assinatura válida', () => {
   assert.match(src, /statusCode = 401/);
 });
+
+// --- leitura do estágio de rastreamento ---
+import { readCrawlerStatus, AGENTES_BUSCA, AGENTES_TREINO } from '../lib/crawlers.mjs';
+
+test('regressão: ClaudeBot rastreando não é "citação impossível"', () => {
+  // O painel dizia "citação em IA é impossível" com ClaudeBot em 41 visitas.
+  // Agente de treinamento passando prova que o robots.txt está certo.
+  const r = readCrawlerStatus(['ClaudeBot', 'Googlebot'], 2);
+  assert.equal(r.nivel, 'parcial');
+  assert.ok(!/impossível/i.test(r.texto), 'ainda afirma impossibilidade');
+  assert.match(r.texto, /robots\.txt está correto/);
+});
+
+test('agente de busca presente muda o veredito', () => {
+  const r = readCrawlerStatus(['OAI-SearchBot', 'ClaudeBot'], 5);
+  assert.equal(r.nivel, 'ok');
+  assert.match(r.texto, /elegível para citação/);
+});
+
+test('nada visitando em site novo é tratado como normal', () => {
+  const r = readCrawlerStatus([], 2);
+  assert.equal(r.nivel, 'vazio');
+  assert.match(r.texto, /Normal para conteúdo publicado/);
+});
+
+test('nada visitando após uma semana sugere investigar', () => {
+  const r = readCrawlerStatus([], 10);
+  assert.match(r.texto, /Firewall da Vercel/);
+});
+
+test('agentes de busca e de treinamento são listas distintas', () => {
+  for (const a of AGENTES_BUSCA) assert.ok(!AGENTES_TREINO.includes(a), `${a} nas duas listas`);
+  assert.ok(AGENTES_TREINO.includes('ClaudeBot'));
+  assert.ok(AGENTES_BUSCA.includes('Claude-SearchBot'));
+});

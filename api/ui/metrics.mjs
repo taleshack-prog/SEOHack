@@ -10,7 +10,7 @@
 import { requireAuth } from '../../lib/auth.mjs';
 import { sql, getClient } from '../../lib/db.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
-import { ESSENCIAIS_GEO } from '../../lib/crawlers.mjs';
+import { AGENTES_BUSCA, readCrawlerStatus } from '../../lib/crawlers.mjs';
 
 const dinheiro = (v) => `US$ ${Number(v || 0).toFixed(2)}`;
 const dias = (d) => Math.floor((Date.now() - new Date(d)) / 86400000);
@@ -44,12 +44,12 @@ export default requireAuth(async (req, res) => {
      WHERE client_id = ${client.id} AND hit_date > CURRENT_DATE - 30
      GROUP BY user_agent ORDER BY hits DESC`;
 
-  const vistos = new Set(porAgente.map((a) => a.user_agent));
-  const faltando = ESSENCIAIS_GEO.filter((a) => !vistos.has(a));
+  const statusCrawler = readCrawlerStatus(porAgente.map((a) => a.user_agent), idadeDias());
 
   const temGsc = artigos.some((a) => a.metric_date);
   const primeiro = artigos[0]?.first_published_at;
   const idade = primeiro ? dias(primeiro) : 0;
+  function idadeDias() { return idade; }
 
   // Agregados só fazem sentido quando há dado.
   const somaImp = artigos.reduce((s, a) => s + Number(a.impressions || 0), 0);
@@ -117,16 +117,14 @@ ${!temGsc ? '<p class="note">As colunas de busca ficam vazias até a Search Cons
 ${porAgente.length ? `<table>
   <thead><tr><th>Agente</th><th>Visitas</th><th>Última</th></tr></thead>
   <tbody>${porAgente.map((a) => `<tr>
-    <td>${esc(a.user_agent)} ${ESSENCIAIS_GEO.includes(a.user_agent) ? '<span class="pill">essencial</span>' : ''}</td>
+    <td>${esc(a.user_agent)} ${AGENTES_BUSCA.includes(a.user_agent) ? '<span class="pill">busca de IA</span>' : ''}</td>
     <td class="num">${a.hits}</td>
     <td class="num">${new Date(a.ultima).toLocaleDateString('pt-BR')}</td>
   </tr>`).join('')}</tbody></table>
-${faltando.length ? `<p class="note">Nunca visitaram: <strong>${faltando.map(esc).join(', ')}</strong>.
-Sem a visita desses agentes, citação em resposta de IA é impossível — mesmo com o robots.txt liberado.</p>`
-  : '<p class="note">Os três agentes essenciais para citação em IA estão visitando o site.</p>'}`
+<p class="note">${esc(statusCrawler.texto)}</p>`
   : `<div class="empty"><strong>Nenhuma visita registrada</strong>
-     O Drain da Vercel precisa estar apontando para <code>/api/logs</code>.
-     Liberar um agente no robots.txt não prova que ele visita — este é o único sinal que prova.</div>`}
+     ${esc(statusCrawler.texto)}
+     Se o Drain da Vercel não estiver apontando para <code>/api/logs</code>, nada é registrado.</div>`}
 
 <h2 class="sec">Orçamento</h2>
 <p class="note">${dinheiro(orcamento?.spent_usd)} de ${dinheiro(orcamento?.monthly_budget_usd)} neste mês.

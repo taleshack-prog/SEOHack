@@ -25,6 +25,14 @@ export default requireAuth(async (req, res) => {
 
   const [budget] = await sql`SELECT * FROM v_budget_status WHERE client_id = ${client.id}`;
 
+  // Sem uma lista dos publicados não havia caminho até a tela de edição — e
+  // corrigir erro em artigo no ar virava operação de terminal.
+  const noAr = await sql`
+    SELECT slug, title, cluster, is_pillar, first_published_at
+      FROM articles
+     WHERE client_id = ${client.id} AND status = 'published'
+     ORDER BY first_published_at DESC`;
+
   // Estado da produção, lido de pipeline_runs — não há estado em memória.
   const [run] = await sql`
     SELECT status, items_processed, items_succeeded, error_message, started_at, finished_at
@@ -56,6 +64,7 @@ export default requireAuth(async (req, res) => {
   if (req.query?.iniciado) flash = { text: 'Produção iniciada. Leva de 2 a 5 minutos — atualize a página para acompanhar.' };
   else if (req.query?.aviso === 'ja-rodando') flash = { text: 'Já existe uma produção em andamento.', bad: true };
   else if (req.query?.ok) flash = { text: `Publicado. ${esc(req.query.ok)} está no ar.` };
+  else if (req.query?.republicado) flash = { text: `Republicado. ${esc(req.query.republicado)} foi regravado no site.` };
   else if (req.query?.clusters === 'ja-sincronizado') flash = { text: 'Todos os pilares já estavam sincronizados.' };
   else if (req.query?.clusters) flash = { text: `Pilares atualizados com links para os satélites (${esc(req.query.clusters)}).` };
   else if (!rodando && run && run.items_succeeded < run.items_processed) {
@@ -143,6 +152,18 @@ ${topics.length ? `<table>
     </div></td>
   </tr>`).join('')}</tbody></table>`
     : '<div class="empty"><strong>Fila vazia</strong>Rode <code>npm run seed</code> para abastecer.</div>'}
+
+<h2 class="sec">No ar</h2>
+${noAr.length ? `<table>
+  <thead><tr><th>Artigo</th><th>Cluster</th><th>Publicado</th><th></th></tr></thead>
+  <tbody>${noAr.map((a) => `<tr>
+    <td>${esc(a.title)} ${a.is_pillar ? '<span class="pill pillar">pilar</span>' : ''}</td>
+    <td class="num">${esc(a.cluster || '—')}</td>
+    <td class="num">${new Date(a.first_published_at).toLocaleDateString('pt-BR')}</td>
+    <td class="num"><a href="/review/${esc(a.slug)}" class="pill">Editar</a></td>
+  </tr>`).join('')}</tbody></table>
+<p class="note">Editar abre o manuscrito. Republicar regrava o HTML no mesmo caminho, sem mudar a URL.</p>`
+  : '<p class="note">Nenhum artigo publicado ainda.</p>'}
 
 <h2 class="sec">Orçamento do mês</h2>
 <p class="note">US$ ${esc(Number(budget?.spent_usd || 0).toFixed(2))} gastos de

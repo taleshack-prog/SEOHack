@@ -261,3 +261,31 @@ test('zero linhas não é tratado como erro', async () => {
   // Dado tem 2-3 dias de atraso; site novo legitimamente devolve vazio.
   assert.match(src, /ainda sem dados nesta janela/);
 });
+
+// --- edição de artigo publicado ---
+const lerArq = async (p) => (await import('node:fs/promises'))
+  .readFile((await import('node:url')).fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8');
+
+test('a tela de revisão aceita artigo publicado', async () => {
+  const src = await lerArq('api/ui/review.mjs');
+  assert.match(src, /status === 'published'/, 'não distingue artigo no ar');
+  assert.match(src, /Republicar/);
+  assert.match(src, /name="markdown"/, 'sem editor de texto para artigo publicado');
+});
+
+test('republicar preserva a data de publicação original', async () => {
+  const src = await lerArq('api/ui/review.mjs');
+  // Republicar não torna o artigo novo: publishedAt é imutável.
+  assert.match(src, /publishedAt: article\.frontmatter\?\.publishedAt/);
+});
+
+test('o editor tem precedência sobre a costura de lacunas', async () => {
+  const src = await lerArq('api/ui/review.mjs');
+  assert.match(src, /typeof body\.markdown === 'string'/);
+});
+
+test('a fila lista os publicados com caminho para editar', async () => {
+  const src = await lerArq('api/ui/home.mjs');
+  assert.match(src, /No ar/);
+  assert.match(src, /href="\/review\/\$\{esc\(a\.slug\)\}"/, 'sem link para a tela de edição');
+});

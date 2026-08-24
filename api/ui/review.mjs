@@ -2,7 +2,18 @@
 // exatamente onde a IA parou. O operador escreve dentro do texto, não num
 // formulário separado — ele precisa ver o contexto para saber o que contar.
 //
-// GET  /review/<slug>   → manuscrito com lacunas
+// Atende DOIS estados:
+//
+//   needs_human → artigo novo esperando a experiência do operador
+//   published   → artigo já no ar, aberto para correção
+//
+// O segundo caso nasceu de um erro real: um artigo publicado trazia
+// `caches.default`, API do Cloudflare, num texto sobre Vercel. O validador
+// novo pega isso na geração, mas não conserta o que já está no ar — e sem
+// caminho no painel, corrigir virava operação de terminal. Encontrar erro em
+// artigo publicado vai acontecer de novo.
+//
+// GET  /review/<slug>   → manuscrito, com lacunas quando houver
 // POST /api/ui/review   → costura as notas, valida, publica pelo adapter
 import { requireAuth, readBody } from '../../lib/auth.mjs';
 import { sql, getClient } from '../../lib/db.mjs';
@@ -17,7 +28,8 @@ async function load(clientId, slug) {
   return a;
 }
 
-function render(article, { erro = null } = {}) {
+function render(article, { erro = null, aviso = null } = {}) {
+  const jaPublicado = article.status === 'published';
   const parts = splitForReview(article.markdown || '');
   const corpo = parts.map((p) => p.type === 'text'
     ? esc(p.content)
@@ -29,22 +41,33 @@ function render(article, { erro = null } = {}) {
 
   const total = parseNotes(article.markdown || '').length;
 
+  const subtitulo = jaPublicado
+    ? `Este artigo já está no ar. Edite o texto direto no manuscrito e republique —
+       o HTML no site é regravado no mesmo caminho, sem mudar a URL.
+       <a href="${esc(article.external_url || '#')}" target="_blank" rel="noopener">Ver publicado</a>`
+    : `${total === 1 ? 'Um trecho aguarda' : `${total} trechos aguardam`} sua experiência.
+       Publique quando estiver pronto — o artigo vai para o site com as suas palavras no lugar das lacunas.`;
+
   return page({
     title: article.title,
-    flash: erro ? { text: erro, bad: true } : null,
+    flash: erro ? { text: erro, bad: true } : (aviso ? { text: aviso } : null),
     body: `
-<p class="sub" style="margin-bottom:6px"><a href="/">← Fila</a></p>
+<p class="sub" style="margin-bottom:6px"><a href="/">← Fila</a>${
+  jaPublicado ? ' · <span class="pill">publicado</span>' : ''}</p>
 <h1 class="lede" style="font-size:28px;max-width:34ch">${esc(article.title)}</h1>
-<p class="sub">${total === 1 ? 'Um trecho aguarda' : `${total} trechos aguardam`} sua experiência.
-Publique quando estiver pronto — o artigo vai para o site com as suas palavras no lugar das lacunas.</p>
+<p class="sub">${subtitulo}</p>
 
 <form method="POST" action="/api/ui/review">
   <input type="hidden" name="slug" value="${esc(article.slug)}">
-  <div class="ms">${corpo}</div>
+  ${jaPublicado
+    ? `<textarea name="markdown" class="ms editor" rows="30">${esc(article.markdown || '')}</textarea>`
+    : `<div class="ms">${corpo}</div>`}
   <div class="actions">
-    <button type="submit" name="acao" value="publicar">Publicar artigo</button>
+    <button type="submit" name="acao" value="publicar">${jaPublicado ? 'Republicar' : 'Publicar artigo'}</button>
     <button type="submit" name="acao" value="salvar" class="ghost">Salvar sem publicar</button>
-    <span class="note">Publicar envia para o site e torna a página visível para buscadores.</span>
+    <span class="note">${jaPublicado
+      ? 'Republicar regrava o HTML no site. A data de publicação original é preservada.'
+      : 'Publicar envia para o site e torna a página visível para buscadores.'}</span>
   </div>
 </form>`,
   });
@@ -69,7 +92,11 @@ export default requireAuth(async (req, res) => {
     body: '<h1 class="lede">Este artigo não existe.</h1>' }), 404);
 
   const notas = [].concat(body.nota ?? []);
-  const markdown = applyNotes(article.markdown || '', notas);
+  // Artigo publicado é editado como texto corrido; artigo novo é costurado a
+  // partir das lacunas. O editor tem precedência quando existe.
+  const markdown = typeof body.markdown === 'string' && body.markdown.trim()
+    ? body.markdown.replace(/\r\n/g, '\n').trim()
+    : applyNotes(article.markdown || '', notas);
 
   if (body.acao === 'salvar') {
     await sql`
@@ -83,7 +110,17 @@ export default requireAuth(async (req, res) => {
   // Publicar: o artigo deixa de ser rascunho, então a validação passa a exigir
   // que nenhum marcador tenha sobrado (regra operator_note_unresolved).
   const agora = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-  const frontmatter = { ...article.frontmatter, draft: false, updatedAt: agora };
+  // publishedAt é imutável: republicar um artigo não o torna novo. Só o
+  // updatedAt muda, e o render só o transforma em dateModified se a diferença
+  // passar de 24h — republicação minutos depois não é revisão.
+  const frontmatter = {
+    ...article.frontmatter,
+    draft: false,
+    publishedAt: article.frontmatter?.publishedAt
+      || article.first_published_at?.toISOString?.().replace(/\.\d+Z$/, 'Z')
+      || agora,
+    updatedAt: agora,
+  };
 
   // A lista de artigos já publicados PRECISA vir junto: sem ela o validador
   // volta a exigir 2 links internos, o que é impossível num blog vazio. O
@@ -119,6 +156,7 @@ export default requireAuth(async (req, res) => {
   }
 
   res.statusCode = 302;
-  res.setHeader('Location', `/?ok=${encodeURIComponent(article.title)}`);
+  const rotulo = article.status === 'published' ? 'republicado' : 'ok';
+  res.setHeader('Location', `/?${rotulo}=${encodeURIComponent(article.title)}`);
   res.end();
 });

@@ -11,6 +11,7 @@ import { requireAuth } from '../../lib/auth.mjs';
 import { sql, getClient } from '../../lib/db.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 import { AGENTES_BUSCA, readCrawlerStatus } from '../../lib/crawlers.mjs';
+import { graficoLinha, graficoBarras, distribuicaoDeRanking } from '../../lib/charts.mjs';
 
 const dinheiro = (v) => `US$ ${Number(v || 0).toFixed(2)}`;
 const dias = (d) => Math.floor((Date.now() - new Date(d)) / 86400000);
@@ -18,7 +19,7 @@ const dias = (d) => Math.floor((Date.now() - new Date(d)) / 86400000);
 export default requireAuth(async (req, res) => {
   const client = await getClient();
 
-  const artigos = await sql`
+  const artigos = (await sql`
     SELECT p.slug, p.title, p.cluster, p.is_pillar, p.status,
            p.first_published_at, p.content_updated_at,
            p.metric_date, p.position, p.impressions, p.clicks, p.ctr_pct,
@@ -26,23 +27,23 @@ export default requireAuth(async (req, res) => {
            COALESCE((SELECT SUM(u.cost_usd) FROM llm_usage u WHERE u.article_id = p.id), 0) AS custo
       FROM v_article_performance p
      WHERE p.client_id = ${client.id} AND p.status = 'published'
-     ORDER BY p.is_pillar DESC, p.first_published_at ASC`;
+     ORDER BY p.is_pillar DESC, p.first_published_at ASC`) || [];
 
-  const [orcamento] = await sql`SELECT * FROM v_budget_status WHERE client_id = ${client.id}`;
+  const [orcamento = {}] = await sql`SELECT * FROM v_budget_status WHERE client_id = ${client.id}`;
 
-  const [totalCusto] = await sql`
+  const [totalCusto = { total: 0 }] = await sql`
     SELECT COALESCE(SUM(cost_usd), 0) AS total FROM llm_usage WHERE client_id = ${client.id}`;
 
-  const [crawlers] = await sql`
+  const [crawlers = { agentes: 0, visitas: 0 }] = await sql`
     SELECT COUNT(DISTINCT user_agent)::int AS agentes, COALESCE(SUM(hit_count), 0)::int AS visitas
       FROM ai_crawler_hits
      WHERE client_id = ${client.id} AND hit_date > CURRENT_DATE - 30`;
 
-  const porAgente = await sql`
+  const porAgente = (await sql`
     SELECT user_agent, SUM(hit_count)::int AS hits, MAX(hit_date) AS ultima
       FROM ai_crawler_hits
      WHERE client_id = ${client.id} AND hit_date > CURRENT_DATE - 30
-     GROUP BY user_agent ORDER BY hits DESC`;
+     GROUP BY user_agent ORDER BY hits DESC`) || [];
 
   const temGsc = artigos.some((a) => a.metric_date);
   const primeiro = artigos[0]?.first_published_at;
@@ -52,6 +53,34 @@ export default requireAuth(async (req, res) => {
   // uma função-ponte declarada depois, e `const` não permite acesso antes da
   // inicialização — a tela quebrava com ReferenceError em produção.
   const statusCrawler = readCrawlerStatus(porAgente.map((a) => a.user_agent), idade);
+
+  // --- séries para os gráficos ---
+  const crawlerPorDia = await sql`
+    SELECT user_agent, hit_date::text AS dia, SUM(hit_count)::int AS hits
+      FROM ai_crawler_hits
+     WHERE client_id = ${client.id} AND hit_date > CURRENT_DATE - 30
+     GROUP BY user_agent, hit_date ORDER BY hit_date`;
+
+  const buscaPorDia = await sql`
+    SELECT metric_date::text AS dia,
+           SUM(impressions)::int AS impressoes,
+           SUM(clicks)::int AS cliques
+      FROM seo_metrics
+     WHERE client_id = ${client.id} AND metric_date > CURRENT_DATE - 30
+     GROUP BY metric_date ORDER BY metric_date`;
+
+  const agentes = [...new Set((crawlerPorDia || []).map((r) => r.user_agent))];
+  const serieCrawlers = agentes.map((nome) => ({
+    nome,
+    pontos: (crawlerPorDia || []).filter((r) => r.user_agent === nome).map((r) => ({ x: r.dia, y: r.hits })),
+  }));
+
+  const serieBusca = [
+    { nome: 'Impressões', pontos: (buscaPorDia || []).map((r) => ({ x: r.dia, y: r.impressoes })) },
+    { nome: 'Cliques', pontos: (buscaPorDia || []).map((r) => ({ x: r.dia, y: r.cliques })) },
+  ];
+
+  const ranking = distribuicaoDeRanking(artigos);
 
   // Agregados só fazem sentido quando há dado.
   const somaImp = artigos.reduce((s, a) => s + Number(a.impressions || 0), 0);
@@ -105,6 +134,13 @@ ${pendencias.length ? `<div class="pending">
   ranking costuma levar de 8 a 12 semanas para estabilizar. Números baixos agora não indicam fracasso.</p>` : ''}
 </div>` : ''}
 
+${graficoLinha(serieBusca, { titulo: 'Impressões e cliques', unidade: 'últimos 30 dias' })}
+
+${ranking.total ? graficoBarras(ranking.faixas, {
+  titulo: `Distribuição de ranking — ${ranking.total} ${ranking.total === 1 ? 'artigo medido' : 'artigos medidos'}`,
+  formata: (v) => `${v}`,
+}) : ''}
+
 <h2 class="sec">Por artigo</h2>
 ${artigos.length ? `<table>
   <thead><tr>
@@ -115,7 +151,13 @@ ${artigos.length ? `<table>
 ${!temGsc ? '<p class="note">As colunas de busca ficam vazias até a Search Console entregar dados.</p>' : ''}`
   : '<div class="empty"><strong>Nenhum artigo publicado</strong>Publique pelo menos um para haver o que medir.</div>'}
 
+${graficoBarras(artigos.map((a) => {
+  const t = String(a.title || a.slug || 'sem título');
+  return { rotulo: t.length > 44 ? `${t.slice(0, 42)}…` : t, valor: Number(a.custo) || 0 };
+}), { titulo: 'Custo por artigo', formata: (v) => `US$ ${Number(v).toFixed(2)}` })}
+
 <h2 class="sec">Crawlers de IA (30 dias)</h2>
+${graficoLinha(serieCrawlers, { titulo: 'Visitas de crawler por dia', unidade: 'últimos 30 dias' })}
 ${porAgente.length ? `<table>
   <thead><tr><th>Agente</th><th>Visitas</th><th>Última</th></tr></thead>
   <tbody>${porAgente.map((a) => `<tr>

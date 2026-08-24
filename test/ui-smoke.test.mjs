@@ -46,7 +46,13 @@ function fakeSql(strings) {
     monthly_budget_usd: '50.00', spent_usd: '1.19', remaining_usd: '48.81' }]);
   if (/FROM topics/i.test(q)) return Promise.resolve([TOPICO]);
   if (/FROM pipeline_runs/i.test(q)) return Promise.resolve([]);
+  if (/FROM ai_crawler_hits/i.test(q) && /hit_date::text/i.test(q)) return Promise.resolve([
+    { user_agent: 'ClaudeBot', dia: '2026-08-22', hits: 30 },
+    { user_agent: 'ClaudeBot', dia: '2026-08-23', hits: 47 },
+    { user_agent: 'Googlebot', dia: '2026-08-22', hits: 9 },
+    { user_agent: 'Googlebot', dia: '2026-08-23', hits: 20 }]);
   if (/FROM ai_crawler_hits/i.test(q)) return Promise.resolve([{ user_agent: 'ClaudeBot', hits: 41, ultima: '2026-08-23' }]);
+  if (/FROM seo_metrics/i.test(q)) return Promise.resolve([]);
   if (/FROM llm_usage/i.test(q)) return Promise.resolve([{ total: '1.19' }]);
   if (/COUNT\(\*\)/i.test(q)) return Promise.resolve([{ n: 8, count: 8 }]);
   if (/v_article_performance|FROM articles/i.test(q)) return Promise.resolve([ARTIGO]);

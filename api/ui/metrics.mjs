@@ -157,9 +157,12 @@ ${graficoBarras(artigos.map((a) => {
 }), { titulo: 'Custo por artigo', formata: (v) => `US$ ${Number(v).toFixed(2)}` })}
 
 <h2 class="sec">Crawlers de IA (30 dias)</h2>
-${graficoLinha(serieCrawlers, { titulo: 'Visitas de crawler por dia', unidade: 'últimos 30 dias' })}
+<p class="note" style="margin-bottom:16px">Visita de crawler é um robô baixando suas páginas para o índice dele —
+não é alguém buscando pelo site. É pré-condição para aparecer em resultados, não resultado.
+Quem mede busca de pessoa é a coluna <strong>Impr.</strong> na tabela de artigos, que vem da Search Console.</p>
+${graficoLinha(serieCrawlers, { titulo: 'Visitas por dia', unidade: 'o número na legenda é o total do período' })}
 ${porAgente.length ? `<table>
-  <thead><tr><th>Agente</th><th>Visitas</th><th>Última</th></tr></thead>
+  <thead><tr><th>Agente</th><th>Visitas no período</th><th>Última</th></tr></thead>
   <tbody>${porAgente.map((a) => `<tr>
     <td>${esc(a.user_agent)} ${AGENTES_BUSCA.includes(a.user_agent) ? '<span class="pill">busca de IA</span>' : ''}</td>
     <td class="num">${a.hits}</td>

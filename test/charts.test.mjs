@@ -67,3 +67,11 @@ test('regressão: posição nula não é contada como Top 3', () => {
   const r = distribuicaoDeRanking([{ position: null }, { position: 0 }, { position: '' }]);
   assert.equal(r.total, 0, 'contou artigo sem posição medida');
 });
+
+test('legenda mostra o total da série para conciliar com a tabela', () => {
+  // O gráfico é diário e a tabela é acumulada. Sem os dois números visíveis,
+  // o leitor conclui que um deles está errado.
+  const svg = graficoLinha([{ nome: 'ClaudeBot', pontos: [
+    { x: '2026-08-23', y: 36 }, { x: '2026-08-24', y: 44 }] }]);
+  assert.match(svg, /ClaudeBot\s*<b>80<\/b>/);
+});

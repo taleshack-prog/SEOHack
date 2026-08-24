@@ -88,6 +88,7 @@ export default requireAuth(async (req, res) => {
 
   const body = await readBody(req);
   const article = await load(client.id, body.slug);
+  const jaEstavaPublicado = article?.status === 'published';
   if (!article) return send(res, page({ title: 'Não encontrado',
     body: '<h1 class="lede">Este artigo não existe.</h1>' }), 404);
 
@@ -130,11 +131,34 @@ export default requireAuth(async (req, res) => {
     SELECT slug, title, first_published_at, content_updated_at FROM articles
      WHERE client_id = ${client.id} AND status = 'published'`;
 
-  const check = validateArticle({ slug: article.slug, frontmatter, markdown },
-    { ...client.adapter_config, existingSlugs: publicados.map((a) => a.slug) });
-  if (!check.valid) {
-    const motivo = check.errors.map((e) => e.detail).join('; ');
-    return send(res, render({ ...article, markdown }, { erro: `Não publicado: ${motivo}` }), 422);
+  const contexto = { ...client.adapter_config, existingSlugs: publicados.map((a) => a.slug) };
+  const check = validateArticle({ slug: article.slug, frontmatter, markdown }, contexto);
+
+  // Correção de artigo publicado não precisa consertar tudo — só não pode piorar.
+  //
+  // As regras evoluem com o blog. "Mínimo 2 links internos" depende de quantos
+  // artigos existem: quando este texto foi escrito havia dois no ar e a
+  // exigência era menor. Republicar aplicava as regras de hoje a um texto de
+  // ontem, e uma edição que só removia código quebrado — melhoria inequívoca —
+  // era bloqueada por uma pendência que ela nem tocou.
+  //
+  // Então comparamos com o estado ANTERIOR e barramos apenas o que a edição
+  // introduziu. O que já estava lá vira aviso.
+  let bloqueantes = check.errors;
+  let herdados = [];
+  if (jaEstavaPublicado) {
+    const antes = validateArticle(
+      { slug: article.slug, frontmatter: article.frontmatter || frontmatter, markdown: article.markdown || '' },
+      contexto);
+    const antigos = new Set(antes.errors.map((e) => e.rule));
+    bloqueantes = check.errors.filter((e) => !antigos.has(e.rule));
+    herdados = check.errors.filter((e) => antigos.has(e.rule));
+  }
+
+  if (bloqueantes.length) {
+    const motivo = bloqueantes.map((e) => e.detail).join('; ');
+    return send(res, render({ ...article, markdown },
+      { erro: `Sua edição introduziu um problema: ${motivo}` }), 422);
   }
 
   try {
@@ -156,7 +180,9 @@ export default requireAuth(async (req, res) => {
   }
 
   res.statusCode = 302;
-  const rotulo = article.status === 'published' ? 'republicado' : 'ok';
-  res.setHeader('Location', `/?${rotulo}=${encodeURIComponent(article.title)}`);
+  const rotulo = jaEstavaPublicado ? 'republicado' : 'ok';
+  const pendente = herdados.length
+    ? `&pendente=${encodeURIComponent(herdados.map((e) => e.rule).join(', '))}` : '';
+  res.setHeader('Location', `/?${rotulo}=${encodeURIComponent(article.title)}${pendente}`);
   res.end();
 });

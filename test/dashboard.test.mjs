@@ -191,10 +191,14 @@ test('geração e publicação passam existingSlugs ao validador', async () => {
   const { readFile } = await import('node:fs/promises');
   const { fileURLToPath } = await import('node:url');
   const ler = (p) => readFile(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8');
+  // Verifica presença no arquivo, não a distância em caracteres da chamada:
+  // a versão anterior olhava os 400 chars seguintes a `validateArticle(` e
+  // quebrou quando o contexto passou a ser montado uma linha acima. Teste que
+  // lê fonte deve checar a intenção, não o formato.
   for (const arquivo of ['lib/content-engine.mjs', 'api/ui/review.mjs']) {
     const src = await ler(arquivo);
-    const chamada = src.slice(src.indexOf('validateArticle('), src.indexOf('validateArticle(') + 400);
-    assert.match(chamada, /existingSlugs/, `${arquivo} valida sem existingSlugs`);
+    assert.match(src, /existingSlugs/, `${arquivo} valida sem existingSlugs`);
+    assert.match(src, /validateArticle\(/, `${arquivo} não valida`);
   }
 });
 

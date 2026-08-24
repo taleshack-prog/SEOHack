@@ -130,3 +130,56 @@ test('slug inexistente devolve 404 em vez de quebrar', async () => {
   assert.equal(res.statusCode, 404);
   assert.ok(original);
 });
+
+// --- POST de correção em artigo publicado ---
+//
+// O caso real: um artigo com 1 link interno foi publicado quando havia poucos
+// artigos no ar. Depois, com oito publicados, a regra passou a exigir 2 — e uma
+// edição que só removia código quebrado era rejeitada por uma pendência que ela
+// não tocou. As regras evoluem com o blog; correção não pode ficar refém disso.
+
+mock.module('../lib/adapters/index.mjs', {
+  namedExports: {
+    publish: async (_c, arts) => ({ committed: arts.map((a) => a.slug), rejected: [], commitSha: 'abc' }),
+  },
+});
+
+const CORPO_BASE = '## Título\n\n' + 'palavra '.repeat(900)
+  + '\n\nVeja o [outro artigo](/blog/artigo-de-teste) e os [produtos](/produtos).';
+
+function reqPost(campos) {
+  const corpo = new URLSearchParams(campos).toString();
+  return {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+    query: {},
+    async *[Symbol.asyncIterator]() { yield Buffer.from(corpo); },
+  };
+}
+
+test('regressão: edição não é bloqueada por pendência que já existia', async () => {
+  // O artigo mockado tem só 1 link interno — falha "mínimo 2" antes e depois.
+  const mod = await import('../api/ui/review.mjs');
+  const res = fakeRes();
+  const editado = CORPO_BASE + '\n\nParágrafo novo, sem introduzir problema.';
+  await mod.default(reqPost({ slug: 'artigo-de-teste', acao: 'publicar', markdown: editado }), res);
+  assert.equal(res.statusCode, 302, `esperava redirect, veio ${res.statusCode}: ${res.body.slice(0, 300)}`);
+  assert.match(res.headers.location, /republicado=/);
+});
+
+test('edição que INTRODUZ problema continua bloqueada', async () => {
+  const mod = await import('../api/ui/review.mjs');
+  const res = fakeRes();
+  // Injeta script: erro novo, que não existia no texto original.
+  const ruim = CORPO_BASE + '\n\n<script>alert(1)</script>';
+  await mod.default(reqPost({ slug: 'artigo-de-teste', acao: 'publicar', markdown: ruim }), res);
+  assert.equal(res.statusCode, 422);
+  assert.match(res.body, /Sua edição introduziu um problema/);
+});
+
+test('salvar sem publicar grava sem validar', async () => {
+  const mod = await import('../api/ui/review.mjs');
+  const res = fakeRes();
+  await mod.default(reqPost({ slug: 'artigo-de-teste', acao: 'salvar', markdown: 'texto curto' }), res);
+  assert.equal(res.statusCode, 200);
+});

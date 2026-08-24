@@ -11,7 +11,7 @@
     "migrate": "node --env-file=.env db/migrate.mjs",
     "seed": "node --env-file=.env scripts/seed-topics.mjs",
     "secrets": "node scripts/gen-secrets.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --experimental-test-module-mocks --test test/*.test.mjs",
     "dev": "vercel dev",
     "doctor": "node --env-file=.env scripts/doctor.mjs",
     "configure": "node --env-file=.env scripts/configure-target.mjs",

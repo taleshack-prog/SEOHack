@@ -44,12 +44,14 @@ export default requireAuth(async (req, res) => {
      WHERE client_id = ${client.id} AND hit_date > CURRENT_DATE - 30
      GROUP BY user_agent ORDER BY hits DESC`;
 
-  const statusCrawler = readCrawlerStatus(porAgente.map((a) => a.user_agent), idadeDias());
-
   const temGsc = artigos.some((a) => a.metric_date);
   const primeiro = artigos[0]?.first_published_at;
   const idade = primeiro ? dias(primeiro) : 0;
-  function idadeDias() { return idade; }
+
+  // `idade` precisa estar declarada ANTES desta linha. A versão anterior usava
+  // uma função-ponte declarada depois, e `const` não permite acesso antes da
+  // inicialização — a tela quebrava com ReferenceError em produção.
+  const statusCrawler = readCrawlerStatus(porAgente.map((a) => a.user_agent), idade);
 
   // Agregados só fazem sentido quando há dado.
   const somaImp = artigos.reduce((s, a) => s + Number(a.impressions || 0), 0);

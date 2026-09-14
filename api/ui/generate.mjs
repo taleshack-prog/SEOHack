@@ -19,6 +19,21 @@ export default requireAuth(async (req, res) => {
   const { topic_id } = await readBody(req);
   const client = await getClient();
 
+  // Sem tópico aprovado não há o que gerar — e dizer "produção iniciada, leva
+  // de 2 a 5 minutos" nesse caso faz o operador esperar por algo que terminou
+  // em milissegundos sem fazer nada. Aconteceu: ficou um dia inteiro aguardando.
+  const aprovados = topic_id
+    ? await sql`SELECT id FROM topics WHERE client_id = ${client.id}
+                  AND id = ${topic_id} AND status = 'approved'`
+    : await sql`SELECT id FROM topics WHERE client_id = ${client.id}
+                  AND status = 'approved' LIMIT 1`;
+
+  if (!aprovados.length) {
+    res.statusCode = 302;
+    res.setHeader('Location', topic_id ? '/?aviso=topico-indisponivel' : '/?aviso=fila-vazia');
+    return res.end();
+  }
+
   // Uma execução por vez. Duas em paralelo competiriam pelos mesmos tópicos e
   // gastariam orçamento em duplicidade.
   const [rodando] = await sql`

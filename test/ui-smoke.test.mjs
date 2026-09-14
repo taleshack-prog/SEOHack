@@ -189,3 +189,16 @@ test('salvar sem publicar grava sem validar', async () => {
   await mod.default(reqPost({ slug: 'artigo-de-teste', acao: 'salvar', markdown: 'texto curto' }), res);
   assert.equal(res.statusCode, 200);
 });
+
+test('regressão: fila vazia não promete produção', async () => {
+  // O botão respondia "Produção iniciada, leva de 2 a 5 minutos" mesmo sem
+  // tópico aprovado. O operador esperou um dia por algo que nunca começou.
+  const src = await (await import('node:fs/promises'))
+    .readFile((await import('node:url')).fileURLToPath(new URL('../api/ui/generate.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /aviso=fila-vazia/, 'não avisa quando não há o que gerar');
+  // A checagem precisa vir ANTES do disparo — o waitUntil é o ponto sem volta.
+  const antes = src.slice(0, src.indexOf('waitUntil('));
+  assert.match(antes, /approved/, 'dispara a produção antes de checar a fila');
+  assert.ok(src.indexOf('aviso=fila-vazia') < src.indexOf('waitUntil('),
+    'o retorno antecipado está depois do disparo');
+});

@@ -63,6 +63,11 @@ export default requireAuth(async (req, res) => {
   let flash = null;
   if (req.query?.iniciado) flash = { text: 'Produção iniciada. Leva de 2 a 5 minutos — atualize a página para acompanhar.' };
   else if (req.query?.aviso === 'ja-rodando') flash = { text: 'Já existe uma produção em andamento.', bad: true };
+  else if (req.query?.aviso === 'fila-vazia') flash = {
+    text: 'Nada foi gerado: a fila de tópicos está vazia. Abasteça com "npm run seed seeds/clusters.csv".',
+    bad: true };
+  else if (req.query?.aviso === 'topico-indisponivel') flash = {
+    text: 'Este tópico não está mais disponível — pode ter sido publicado ou descartado.', bad: true };
   else if (req.query?.ok) flash = { text: `Publicado. ${esc(req.query.ok)} está no ar.` };
   else if (req.query?.republicado) flash = {
     text: `Republicado. ${esc(req.query.republicado)} foi regravado no site.`
@@ -103,11 +108,20 @@ export default requireAuth(async (req, res) => {
           Esta página se atualiza sozinha.</span>
         </div>
       </div>`
-    : `<form method="POST" action="/api/ui/generate" class="produce">
-        <button type="submit">Gerar próximos artigos</button>
-        <span class="note">Pega os primeiros da fila abaixo, pilares primeiro.
-        Custa cerca de US$ 0,25 por artigo.</span>
-      </form>`;
+    : topics.some((t) => t.status === 'approved')
+      ? `<form method="POST" action="/api/ui/generate" class="produce">
+          <button type="submit">Gerar próximos artigos</button>
+          <span class="note">Pega os primeiros da fila abaixo, pilares primeiro.
+          Custa cerca de US$ 0,25 por artigo.</span>
+        </form>`
+      // Botão que não pode funcionar não deve estar ativo: prometer produção
+      // com a fila vazia foi o que fez o operador esperar um dia inteiro.
+      : `<div class="empty" style="text-align:left">
+          <strong>Nada a produzir</strong>
+          A fila de tópicos está vazia. Edite <code>seeds/clusters.csv</code> com os temas
+          a atacar e rode <code>npm run seed seeds/clusters.csv</code>.
+          Os crons de segunda, quarta e sexta também não geram nada enquanto ela estiver assim.
+        </div>`;
 
   const body = `
 ${held.length

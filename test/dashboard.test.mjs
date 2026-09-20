@@ -293,3 +293,13 @@ test('a fila lista os publicados com caminho para editar', async () => {
   assert.match(src, /No ar/);
   assert.match(src, /href="\/review\/\$\{esc\(a\.slug\)\}"/, 'sem link para a tela de edição');
 });
+
+// --- número sem fonte segura, não descarta ---
+test('content-engine segura para revisão o artigo com número sem fonte', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(fileURLToPath(new URL('../lib/content-engine.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /check\.review\.length/, 'não consulta a lista de revisão do validador');
+  assert.match(src, /frontmatter\.draft = segurar/, 'artigo com número sem fonte seguiria direto para o site');
+  assert.match(src, /segurar \? 'needs_human'/, 'artigo segurado não entra na fila de revisão');
+});

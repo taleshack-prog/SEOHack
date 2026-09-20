@@ -202,3 +202,39 @@ test('regressão: fila vazia não promete produção', async () => {
   assert.ok(src.indexOf('aviso=fila-vazia') < src.indexOf('waitUntil('),
     'o retorno antecipado está depois do disparo');
 });
+
+// --- número sem fonte segura o artigo em vez de descartá-lo ---
+//
+// Lote 2: três artigos (NRR, tokenização, CAC) foram descartados depois de
+// pagos porque a regex acusou "100%" e "R$ 2". Agora o artigo fica na fila,
+// e a revisão mostra o número destacado e abre o editor.
+test('artigo segurado por número sem fonte abre com editor e destaque', async () => {
+  const original = { ...ARTIGO };
+  Object.assign(ARTIGO, {
+    status: 'needs_human', first_published_at: null,
+    frontmatter: { title: 'Artigo de Teste', author: 'Tales Hack', tags: ['saas'],
+      description: 'Uma descrição de teste com tamanho suficiente para passar pela regra de comprimento mínimo exigida pelo validador de artigos do blog.',
+      summary: 'Resumo do artigo de teste.', draft: true,
+      publishedAt: '2026-09-20T10:00:00Z', updatedAt: '2026-09-20T10:00:00Z' },
+    markdown: CORPO_BASE + '\n\nO churn médio do mercado é de 8% ao mês.',
+  });
+  try {
+    const res = await renderiza('../api/ui/review.mjs', { query: { slug: 'artigo-de-teste' } });
+    assert.equal(res.statusCode, 200);
+    assert.match(res.body, /name="markdown"/, 'sem lacuna, precisa abrir o editor');
+    assert.match(res.body, /<mark>8%<\/mark>/, 'não destacou o número');
+    assert.match(res.body, /Publicar artigo/);
+
+    const home = await renderiza('../api/ui/home.mjs');
+    assert.match(home.body, /1 número para conferir/);
+
+    // Publicar como está: o operador aprovou, o número não bloqueia.
+    const mod = await import('../api/ui/review.mjs');
+    const post = fakeRes();
+    await mod.default(reqPost({ slug: 'artigo-de-teste', acao: 'publicar', markdown: ARTIGO.markdown }), post);
+    assert.equal(post.statusCode, 302, (post.body.match(/problema:[^<]*/) || [post.body.slice(0, 300)])[0]);
+    assert.match(post.headers.location, /\?ok=/);
+  } finally {
+    Object.assign(ARTIGO, original);
+  }
+});

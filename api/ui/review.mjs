@@ -18,7 +18,7 @@
 import { requireAuth, readBody } from '../../lib/auth.mjs';
 import { sql, getClient } from '../../lib/db.mjs';
 import { splitForReview, applyNotes, parseNotes } from '../../lib/notes.mjs';
-import { validateArticle } from '../../lib/validate.mjs';
+import { validateArticle, findUnsourcedStats } from '../../lib/validate.mjs';
 import { publish as publishViaAdapter } from '../../lib/adapters/index.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 
@@ -26,6 +26,15 @@ async function load(clientId, slug) {
   const [a] = await sql`
     SELECT * FROM articles WHERE client_id = ${clientId} AND slug = ${slug}`;
   return a;
+}
+
+// Destaca o número dentro do trecho. Escapa ANTES de marcar: o trecho vem do
+// LLM e não pode virar HTML.
+function marcar(trecho, numero) {
+  const t = esc(trecho.length > 400 ? `${trecho.slice(0, 400)}…` : trecho);
+  const n = esc(numero);
+  const i = t.indexOf(n);
+  return i < 0 ? t : `${t.slice(0, i)}<mark>${n}</mark>${t.slice(i + n.length)}`;
 }
 
 function render(article, { erro = null, aviso = null } = {}) {
@@ -40,13 +49,28 @@ function render(article, { erro = null, aviso = null } = {}) {
       </span>`).join('');
 
   const total = parseNotes(article.markdown || '').length;
+  // Sem lacunas, o manuscrito vira editor: o operador precisa poder trocar um
+  // número ou colar a fonte. Com lacunas, o modo costura continua.
+  const editor = jaPublicado || total === 0;
+  const numeros = findUnsourcedStats(article.markdown || '');
+  const painelNumeros = numeros.length ? `
+<div class="card" style="border-left:3px solid #c9a227">
+  <h3>${numeros.length === 1 ? 'Um número' : `${numeros.length} números`} sem fonte</h3>
+  <p class="note">A máquina não sabe se estes números são dado apurado ou limite/exemplo.
+  Para cada um: se for exemplo ou limite, pode publicar assim. Se for dado de mercado,
+  cole o link da fonte no parágrafo — <code>[nome da fonte](https://...)</code> — ou troque o número.</p>
+  ${numeros.map((n) => `<p class="asks">${marcar(n.trecho, n.numero)}</p>`).join('')}
+</div>` : '';
 
   const subtitulo = jaPublicado
     ? `Este artigo já está no ar. Edite o texto direto no manuscrito e republique —
        o HTML no site é regravado no mesmo caminho, sem mudar a URL.
        <a href="${esc(article.external_url || '#')}" target="_blank" rel="noopener">Ver publicado</a>`
-    : `${total === 1 ? 'Um trecho aguarda' : `${total} trechos aguardam`} sua experiência.
-       Publique quando estiver pronto — o artigo vai para o site com as suas palavras no lugar das lacunas.`;
+    : total
+      ? `${total === 1 ? 'Um trecho aguarda' : `${total} trechos aguardam`} sua experiência.
+       Publique quando estiver pronto — o artigo vai para o site com as suas palavras no lugar das lacunas.`
+      : `O artigo foi segurado para você conferir os números destacados abaixo.
+       Edite o texto se precisar e publique — ou publique como está, se os números estão certos.`;
 
   return page({
     title: article.title,
@@ -56,10 +80,11 @@ function render(article, { erro = null, aviso = null } = {}) {
   jaPublicado ? ' · <span class="pill">publicado</span>' : ''}</p>
 <h1 class="lede" style="font-size:28px;max-width:34ch">${esc(article.title)}</h1>
 <p class="sub">${subtitulo}</p>
+${painelNumeros}
 
 <form method="POST" action="/api/ui/review">
   <input type="hidden" name="slug" value="${esc(article.slug)}">
-  ${jaPublicado
+  ${editor
     ? `<textarea name="markdown" class="ms editor" rows="30">${esc(article.markdown || '')}</textarea>`
     : `<div class="ms">${corpo}</div>`}
   <div class="actions">

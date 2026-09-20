@@ -39,10 +39,14 @@ test('A2: marcador de operador com draft:false reprova', () => {
   assert.ok(r.errors.some((e) => e.rule === 'operator_note_unresolved'));
 });
 
-test('PRD 8.1: estatística sem link de fonte reprova', () => {
+test('PRD 8.1: estatística sem fonte vai para revisão, não reprova', () => {
   const r = validateArticle({ slug: 'x-y', frontmatter: base(),
     markdown: body('\n\nO tempo de build caiu 47% depois da mudança.') });
-  assert.ok(r.errors.some((e) => e.rule === 'unsourced_statistic'));
+  assert.equal(r.errors.some((e) => e.rule === 'unsourced_statistic'), false);
+  const item = r.review.find((e) => e.rule === 'unsourced_statistic');
+  assert.ok(item);
+  assert.equal(item.trechos[0].numero, '47%');
+  assert.match(item.trechos[0].trecho, /tempo de build caiu 47%/);
 });
 
 test('PRD 8.1: estatística com link de fonte passa', () => {
@@ -135,10 +139,13 @@ ${'palavra '.repeat(900)}
 [guia](/blog/x) [produtos](/produtos)
 ${extra}`;
 
-const soErro = (md, regra) =>
-  validateArticle({ slug: 'calcular-mrr', frontmatter: base(), markdown: md },
-    { productPaths: ['/produtos'], existingSlugs: ['x'] })
-    .errors.some((e) => e.rule === regra);
+// "Acusado" = reprovado OU mandado para revisão. unsourced_statistic hoje só
+// manda para revisão, mas o que estes testes medem é se o número foi acusado.
+const soErro = (md, regra) => {
+  const r = validateArticle({ slug: 'calcular-mrr', frontmatter: base(), markdown: md },
+    { productPaths: ['/produtos'], existingSlugs: ['x'] });
+  return [...r.errors, ...r.review].some((e) => e.rule === regra);
+};
 
 test('regressão: exemplo hipotético de cálculo não exige fonte', () => {
   // Este era o erro real que reprovou o artigo de MRR/churn/LTV.
@@ -198,4 +205,43 @@ test('ordens de grandeza comuns em texto técnico passam', () => {
   ]) {
     assert.equal(soErro(comTexto(`\n\n${frase}`), 'unsourced_statistic'), false, frase);
   }
+});
+
+// --- lote 2: casos reais que descartaram artigos pagos ---
+test('regressão: 100% como limiar não é estatística (artigo de NRR)', () => {
+  for (const frase of [
+    'Um NRR acima de 100% significa que a base cresce mesmo sem clientes novos.',
+    'Abaixo de 100%, a receita da base encolhe mês a mês.',
+    'O NRR de 100% é o ponto de equilíbrio.',
+  ]) {
+    assert.equal(soErro(comTexto(`\n\n${frase}`), 'unsourced_statistic'), false, frase);
+  }
+});
+
+test('regressão: 100% como completude não é estatística (tokenizar obra)', () => {
+  const md = comTexto('\n\nQuem reúne 100% das frações pode resgatar a obra física.');
+  assert.equal(soErro(md, 'unsourced_statistic'), false);
+});
+
+test('regressão: proporção em moeda não é estatística (artigo de CAC)', () => {
+  for (const frase of [
+    'O ideal é gerar R$ 3 de LTV para cada R$ 1 gasto em aquisição.',
+    'Se cada R$ 2 investidos trazem R$ 5 de receita, a conta fecha.',
+    'Uma relação LTV:CAC de 3:1 é o alvo mais citado.',
+  ]) {
+    assert.equal(soErro(comTexto(`\n\n${frase}`), 'unsourced_statistic'), false, frase);
+  }
+});
+
+test('percentual diferente de 0/100 no mesmo parágrafo continua acusado', () => {
+  const md = comTexto('\n\nEmpresas com NRR acima de 100% crescem 2,5x mais rápido, e 70% delas são B2B.');
+  assert.equal(soErro(md, 'unsourced_statistic'), true);
+});
+
+test('artigo só com números para conferir continua válido', () => {
+  const r = validateArticle({ slug: 'calcular-mrr', frontmatter: base(),
+    markdown: comTexto('\n\nO churn médio do mercado é de 8% ao mês.') },
+    { productPaths: ['/produtos'], existingSlugs: ['x'] });
+  assert.equal(r.valid, true, JSON.stringify(r.errors));
+  assert.equal(r.review.length, 1);
 });

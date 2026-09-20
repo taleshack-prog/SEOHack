@@ -3,6 +3,7 @@
 import { requireAuth } from '../../lib/auth.mjs';
 import { sql, getClient } from '../../lib/db.mjs';
 import { parseNotes } from '../../lib/notes.mjs';
+import { findUnsourcedStats } from '../../lib/validate.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 
 const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
@@ -85,6 +86,7 @@ export default requireAuth(async (req, res) => {
 
   const cards = held.map((a) => {
     const notes = parseNotes(a.markdown || '');
+    const numeros = findUnsourcedStats(a.markdown || '');
     const dias = Math.floor((Date.now() - new Date(a.created_at)) / 86400000);
     return `<a class="card" href="/review/${esc(a.slug)}">
       <h3>${esc(a.title)}</h3>
@@ -92,10 +94,12 @@ export default requireAuth(async (req, res) => {
         <span>${esc(a.cluster || 'sem cluster')}</span>
         ${a.is_pillar ? '<span class="pill pillar">pilar</span>' : ''}
         <span>${a.word_count || 0} palavras</span>
-        <span>${plural(notes.length, 'trecho', 'trechos')} a escrever</span>
+        ${notes.length ? `<span>${plural(notes.length, 'trecho', 'trechos')} a escrever</span>` : ''}
+        ${numeros.length ? `<span class="pill">${plural(numeros.length, 'número', 'números')} para conferir</span>` : ''}
         <span>${dias === 0 ? 'hoje' : `há ${plural(dias, 'dia', 'dias')}`}</span>
       </div>
-      ${notes[0] ? `<p class="asks">“${esc(notes[0].instruction)}”</p>` : ''}
+      ${notes[0] ? `<p class="asks">“${esc(notes[0].instruction)}”</p>`
+        : numeros[0] ? `<p class="asks">Sem fonte: ${esc(numeros.slice(0, 3).map((n) => n.numero).join(', '))}</p>` : ''}
     </a>`;
   }).join('');
 
@@ -125,8 +129,8 @@ export default requireAuth(async (req, res) => {
 
   const body = `
 ${held.length
-    ? `<h1 class="lede"><em>${plural(held.length, 'artigo', 'artigos')}</em> esperando sua experiência.</h1>
-       <p class="sub">A máquina escreveu o resto. Estes trechos exigem algo que ela não viveu.</p>
+    ? `<h1 class="lede"><em>${plural(held.length, 'artigo', 'artigos')}</em> esperando sua revisão.</h1>
+       <p class="sub">A máquina escreveu o resto. Estes precisam de algo que ela não tem: experiência vivida ou a sua palavra sobre um número.</p>
        ${cards}`
     : `<h1 class="lede">Nada parado.</h1>
        <p class="sub">Nenhum artigo aguarda revisão neste momento.

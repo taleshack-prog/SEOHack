@@ -1,9 +1,9 @@
 cluster,topic,is_pillar,keyword_type,search_volume,difficulty_score,affinity
-saas,Guia definitivo de arquitetura SaaS em 2026,true,informational,880,55,1.0
-saas,Como calcular MRR churn e LTV na prática,false,informational,1300,45,1.0
-saas,Multi-tenancy no PostgreSQL: schema vs row level security,false,informational,320,40,1.2
-saas,Quanto custa manter um SaaS pequeno na Vercel,false,commercial,210,35,1.3
-web3,Guia definitivo de smart contracts para desenvolvedores,true,informational,1100,65,1.0
-web3,Auditoria de segurança em DApps: checklist prático,false,commercial,290,50,1.5
-web3,Gas fees na EVM: como estimar e reduzir,false,informational,540,48,1.0
-automacao,Automação de LinkedIn sem violar os termos de uso,false,commercial,430,42,1.5
+saas,Como calcular CAC e a relação LTV/CAC no seu SaaS,false,informational,500,44,1.2
+saas,Net Revenue Retention: o que é e como medir,false,informational,500,46,1.2
+saas,ARR ou MRR: qual métrica usar e quando,false,informational,60,40,1.2
+web3,Como tokenizar uma obra de arte em tokens ERC-20 fracionados,false,informational,40,35,1.6
+web3,DeSci: como blockchain financia pesquisa científica,false,informational,40,38,1.4
+web3,Smart contract de royalties para artistas: como funciona na prática,false,informational,30,35,1.5
+web3,Por que usar Base L2 em vez da mainnet Ethereum para tokenizar ativos,false,commercial,30,32,1.5
+web3,Threshold Redemption: como resgatar um ativo físico tokenizado,false,informational,10,15,1.8

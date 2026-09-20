@@ -1,0 +1,20 @@
+{
+  "_leia": "Produtos que os artigos devem divulgar. 'path' é o destino do link: caminho do site (/neuroart) ou URL completa de domínio próprio (https://genbreed.com.br). 'clusters' liga o produto aos clusters de tópicos criados para ele: artigo desses clusters é OBRIGADO a linkar o produto. 'about' é o que o modelo lê para decidir onde o link cabe no texto. Depois de editar, rode: npm run sync-products 'voice' (opcional) substitui a persona de engenheiro de software do prompt nos artigos dos clusters do produto — use quando o público não é desenvolvedor.",
+  "products": [
+    {
+      "path": "https://genbreed.com.br",
+      "name": "GenBreed",
+      "about": "simulador de laboratório de genética: o usuário cruza espécies reais (gatos domésticos, felinos selvagens, canídeos) com herança mendeliana e quantitativa de verdade — loci de cor, padrão, diluição e albinismo, quadro de Punnett, coeficiente de endogamia calculado a partir do pedigree e fixação de fenótipo ao longo de gerações. Plano gratuito disponível.",
+      "clusters": [
+        "genetica"
+      ],
+      "voice": "Público: estudantes de biologia e veterinária, professores e criadores/entusiastas de felinos e cães. Escreva como professor de genética que explica bem, não como engenheiro de software: nada de analogias com código, SaaS ou arquitetura. Precisão de livro-texto: nomes de genes e alelos corretos (ex.: TYR, MC1R, ASIP, locus Orange ligado ao X), dominância e epistasia explicadas com cruzamentos concretos. Fontes aceitas para dados: livros-texto de genética, artigos com DOI, OMIA (omia.org), sites de universidades e órgãos de pesquisa. Se não tiver certeza de um gene, alelo ou mecanismo, descreva o fenômeno sem nomear o gene."
+    },
+    {
+      "path": "/neuroart",
+      "name": "NeuroArt DApp",
+      "about": "DApp de arte na Base: tokenização de obras, frações e resgate (threshold redemption), token NEURO.",
+      "clusters": []
+    }
+  ]
+}

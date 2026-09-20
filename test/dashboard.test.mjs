@@ -57,7 +57,11 @@ test('artigo sem marcador devolve um bloco só', () => {
 test('sessão válida é aceita e adulterada é rejeitada', () => {
   const t = issue();
   assert.equal(isValid(t), true);
-  assert.equal(isValid(t.slice(0, -2) + 'ff'), false);
+  // Troca o último caractere por OUTRO. A versão anterior colava 'ff' fixo e
+  // falhava 1 vez em 256: quando a assinatura já terminava em 'ff', a
+  // "adulteração" devolvia o token original.
+  const ultimo = t.slice(-1);
+  assert.equal(isValid(t.slice(0, -1) + (ultimo === '0' ? '1' : '0')), false);
   assert.equal(isValid('lixo'), false);
   assert.equal(isValid(''), false);
 });

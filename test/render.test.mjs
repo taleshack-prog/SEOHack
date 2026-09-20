@@ -39,9 +39,10 @@ test('D12: sanitização remove script e handler de evento', () => {
   assert.ok(!/onerror/i.test(html), 'handler de evento sobreviveu');
 });
 
-test('PRD 35: link externo recebe rel noopener noreferrer', () => {
+test('PRD 35: link externo recebe rel noopener, sem noreferrer (preserva a origem da visita)', () => {
   const html = renderPage({ slug: 'x', frontmatter: fm, markdown: md, site });
-  assert.match(html, /href="https:\/\/vercel\.com\/docs"[^>]*rel="noopener noreferrer"/);
+  assert.match(html, /href="https:\/\/vercel\.com\/docs"[^>]*rel="noopener"/);
+  assert.doesNotMatch(html, /noreferrer|nofollow/);
 });
 
 test('link interno NÃO recebe target blank', () => {

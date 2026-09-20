@@ -153,10 +153,16 @@ export default requireAuth(async (req, res) => {
   // content-engine já fazia isso; aqui ficou de fora, e o artigo passou na
   // geração para reprovar só na hora de publicar.
   const publicados = await sql`
-    SELECT slug, title, first_published_at, content_updated_at FROM articles
+    SELECT slug, title, cluster, first_published_at, content_updated_at FROM articles
      WHERE client_id = ${client.id} AND status = 'published'`;
 
-  const contexto = { ...client.adapter_config, existingSlugs: publicados.map((a) => a.slug) };
+  const contexto = { ...client.adapter_config, existingSlugs: publicados.map((a) => a.slug),
+                     cluster: article.cluster,
+                     // Mesma conta da geração: só artigos do cluster, sem o próprio.
+                     clusterSlugs: article.cluster
+                       ? publicados.filter((a) => a.cluster === article.cluster && a.slug !== article.slug)
+                           .map((a) => a.slug)
+                       : undefined };
   const check = validateArticle({ slug: article.slug, frontmatter, markdown }, contexto);
 
   // Correção de artigo publicado não precisa consertar tudo — só não pode piorar.

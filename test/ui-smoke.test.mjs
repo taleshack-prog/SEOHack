@@ -59,6 +59,10 @@ function fakeSql(strings) {
     { user_agent: 'Googlebot', dia: '2026-08-23', hits: 20 }]);
   if (/FROM ai_crawler_hits/i.test(q)) return Promise.resolve([{ user_agent: 'ClaudeBot', hits: 41, ultima: '2026-08-23' }]);
   if (/FROM seo_metrics/i.test(q)) return Promise.resolve([]);
+  if (/FROM leads/i.test(q)) return Promise.resolve([{
+    id: 'l1', nome: 'Heitor Hack', email: 'alguem@exemplo.com', assunto: 'Dúvida sobre um produto',
+    mensagem: 'gostaria de entender como funciona o GenBreed?', origem: 'https://hacktechfarm.com.br',
+    site_alvo: null, status: 'novo', email_erro: null, created_at: new Date() }]);
   if (/FROM llm_usage/i.test(q)) return Promise.resolve([{ total: '1.19' }]);
   if (/COUNT\(\*\)/i.test(q)) return Promise.resolve([{ n: 8, count: 8 }]);
   if (/v_article_performance|FROM articles/i.test(q)) return Promise.resolve([ARTIGO]);
@@ -282,4 +286,12 @@ test('destravar só aceita POST', async () => {
   const res = fakeRes();
   await mod.default(req(), res);
   assert.equal(res.statusCode, 405);
+});
+
+test('a tela de contatos lista o que chegou', async () => {
+  const res = await renderiza('../api/ui/contatos.mjs');
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /Heitor Hack/);
+  assert.match(res.body, /mailto:alguem@exemplo\.com/);
+  assert.match(res.body, /Marcar como respondido/);
 });

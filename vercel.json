@@ -55,6 +55,9 @@
     },
     "api/diagnostico.mjs": {
       "maxDuration": 60
+    },
+    "api/contato.mjs": {
+      "maxDuration": 15
     }
   },
   "rewrites": [
@@ -81,6 +84,10 @@
     {
       "source": "/diagnostico",
       "destination": "/api/diagnostico"
+    },
+    {
+      "source": "/contatos",
+      "destination": "/api/ui/contatos"
     }
   ]
 }

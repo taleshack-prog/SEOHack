@@ -24,6 +24,19 @@ export default requireAuth(async (req, res) => {
      ORDER BY is_pillar DESC, opportunity_score DESC NULLS LAST
      LIMIT 12`;
 
+  // Tópico que entrou em produção e nunca voltou.
+  //
+  // O motor marca 'writing' antes de chamar o LLM. Se a função morre no meio —
+  // timeout, deploy durante a execução, erro fora do try — o tópico fica nesse
+  // estado para sempre. E como a fila só lista 'pending' e 'approved', ele
+  // some da tela sem avisar ninguém: foi assim que quatro tópicos de genética
+  // desapareceram entre a fila e os publicados.
+  const presos = await sql`
+    SELECT id, topic, cluster, assigned_at FROM topics
+     WHERE client_id = ${client.id} AND status = 'writing'
+       AND assigned_at < NOW() - INTERVAL '20 minutes'
+     ORDER BY assigned_at ASC`;
+
   const [budget] = await sql`SELECT * FROM v_budget_status WHERE client_id = ${client.id}`;
 
   // Sem uma lista dos publicados não havia caminho até a tela de edição — e
@@ -67,6 +80,9 @@ export default requireAuth(async (req, res) => {
   else if (req.query?.aviso === 'fila-vazia') flash = {
     text: 'Nada foi gerado: a fila de tópicos está vazia. Abasteça com "npm run seed seeds/clusters.csv".',
     bad: true };
+  else if (req.query?.destravados) flash = {
+    text: `${req.query.destravados} tópico(s) de volta à fila. O texto que estava sendo escrito quando a produção`
+        + ' morreu foi descartado; eles serão reescritos do zero.' };
   else if (req.query?.aviso === 'topico-indisponivel') flash = {
     text: 'Este tópico não está mais disponível — pode ter sido publicado ou descartado.', bad: true };
   else if (req.query?.ok) flash = { text: `Publicado. ${esc(req.query.ok)} está no ar.` };
@@ -148,6 +164,19 @@ ${precisaSync.length ? `<h2 class="sec">Estrutura dos clusters</h2>
   </div>
   <form method="POST" action="/api/ui/sync-clusters" style="margin-left:auto">
     <button type="submit">Sincronizar</button>
+  </form>
+</div>` : ''}
+
+${presos.length ? `<h2 class="sec">Tópicos presos</h2>
+<div class="running" style="border-left-color:var(--proof)">
+  <div>
+    <strong>${presos.length === 1 ? 'Um tópico travado em produção' : `${presos.length} tópicos travados em produção`}</strong>
+    <span class="note">${presos.map((t) => `“${esc(t.topic)}”`).join(', ')} ${presos.length === 1 ? 'entrou' : 'entraram'}
+    em produção e não ${presos.length === 1 ? 'voltou' : 'voltaram'} — a execução foi interrompida antes do fim.
+    Enquanto ficam assim, não aparecem na fila e nunca são gerados.</span>
+  </div>
+  <form method="POST" action="/api/ui/destravar" style="margin-left:auto">
+    <button type="submit">Devolver à fila</button>
   </form>
 </div>` : ''}
 

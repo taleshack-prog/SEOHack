@@ -15,7 +15,23 @@ const r = await sql`
    WHERE client_id = ${client.id} AND status = 'pending' AND status_reason IS NOT NULL
   RETURNING topic`;
 
-if (!r.length) console.log('Nenhum tópico com falha para devolver à fila.');
+// Tópico preso em 'writing' é pior que tópico que falhou: some da fila do
+// painel sem deixar rastro. O mesmo comando resolve os dois casos.
+const presos = await sql`
+  UPDATE topics
+     SET status = 'approved', assigned_at = NULL,
+         status_reason = 'produção interrompida — devolvido à fila'
+   WHERE client_id = ${client.id} AND status = 'writing'
+     AND assigned_at < NOW() - INTERVAL '20 minutes'
+  RETURNING topic`;
+
+if (presos.length) {
+  console.log(`✓ ${presos.length} tópico(s) destravado(s) de "writing":`);
+  for (const t of presos) console.log(`  ${t.topic}`);
+}
+
+if (!r.length && !presos.length) console.log('Nenhum tópico com falha para devolver à fila.');
+else if (!r.length) console.log('Nenhum tópico com falha (além dos destravados acima).');
 else {
   console.log(`✓ ${r.length} tópico(s) de volta à fila:`);
   for (const t of r) console.log(`  ${t.topic}`);

@@ -35,6 +35,9 @@ const ARTIGO = {
   citation_count: 0, custo: '0.15',
 };
 
+// Mutável: cada teste decide se há tópico travado em produção.
+let PRESOS = [];
+
 const TOPICO = { id: 't1', topic: 'Um tópico', cluster: 'saas', is_pillar: false,
                  status: 'approved', opportunity_score: '42.00', status_reason: null };
 
@@ -44,6 +47,9 @@ function fakeSql(strings) {
   if (/FROM clients/i.test(q) && !/v_budget_status/i.test(q)) return Promise.resolve([CLIENTE]);
   if (/v_budget_status/i.test(q)) return Promise.resolve([{ client_id: CLIENTE.id, name: 'Exemplo',
     monthly_budget_usd: '50.00', spent_usd: '1.19', remaining_usd: '48.81' }]);
+  // A fila de presos usa a MESMA tabela; separa pelo estado consultado.
+  if (/FROM topics/i.test(q) && /status = 'writing'/.test(q)) return Promise.resolve(PRESOS);
+  if (/UPDATE topics/i.test(q)) return Promise.resolve(PRESOS);
   if (/FROM topics/i.test(q)) return Promise.resolve([TOPICO]);
   if (/FROM pipeline_runs/i.test(q)) return Promise.resolve([]);
   if (/FROM ai_crawler_hits/i.test(q) && /hit_date::text/i.test(q)) return Promise.resolve([
@@ -237,4 +243,43 @@ test('artigo segurado por número sem fonte abre com editor e destaque', async (
   } finally {
     Object.assign(ARTIGO, original);
   }
+});
+
+// --- tópico preso em 'writing' ---
+//
+// O motor marca 'writing' antes de chamar o LLM. Quando a execução morre no
+// meio, o tópico fica nesse estado e some da fila, que lista só 'pending' e
+// 'approved'. Foi assim que quatro tópicos de genética sumiram sem aviso.
+test('tópico travado em produção aparece no painel com saída', async () => {
+  PRESOS = [{ id: 't9', topic: 'Como fazer o quadro de Punnett', cluster: 'genetica',
+              assigned_at: new Date('2026-09-24T10:00:00Z') }];
+  try {
+    const res = await renderiza('../api/ui/home.mjs');
+    assert.match(res.body, /travado em produção/);
+    assert.match(res.body, /quadro de Punnett/);
+    assert.match(res.body, /action="\/api\/ui\/destravar"/, 'sem botão, o operador não tem saída pelo painel');
+  } finally { PRESOS = []; }
+});
+
+test('sem tópico preso, o bloco não aparece', async () => {
+  const res = await renderiza('../api/ui/home.mjs');
+  assert.doesNotMatch(res.body, /travado em produção/);
+});
+
+test('destravar devolve à fila e redireciona com a contagem', async () => {
+  PRESOS = [{ topic: 'a' }, { topic: 'b' }];
+  try {
+    const mod = await import('../api/ui/destravar.mjs');
+    const res = fakeRes();
+    await mod.default(reqPost({}), res);
+    assert.equal(res.statusCode, 302);
+    assert.match(res.headers.location, /destravados=2/);
+  } finally { PRESOS = []; }
+});
+
+test('destravar só aceita POST', async () => {
+  const mod = await import('../api/ui/destravar.mjs');
+  const res = fakeRes();
+  await mod.default(req(), res);
+  assert.equal(res.statusCode, 405);
 });

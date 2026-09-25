@@ -307,3 +307,25 @@ test('content-engine segura para revisão o artigo com número sem fonte', async
   assert.match(src, /frontmatter\.draft = segurar/, 'artigo com número sem fonte seguiria direto para o site');
   assert.match(src, /segurar \? 'needs_human'/, 'artigo segurado não entra na fila de revisão');
 });
+
+// --- regressão: artigo publicado sem status de publicado ---
+//
+// O motor gravava o commit e não mudava articles.status. Como painel, índice,
+// sitemap, desempenho e a lista de links internos filtram por 'published',
+// cinco artigos foram para o site e sumiram de todo o resto do sistema.
+test('o motor marca o artigo como publicado ao confirmar o commit', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(fileURLToPath(new URL('../lib/content-engine.mjs', import.meta.url)), 'utf8');
+  const trecho = src.slice(src.indexOf('result.committed.includes'), src.indexOf('UPDATE topics SET status ='));
+  assert.match(trecho, /UPDATE articles[\s\S]*SET status =/,
+    'o UPDATE do artigo publicado precisa mexer no status, senão ele fica invisível');
+  assert.match(trecho, /'published'/);
+});
+
+test('há caminho para consertar e regerar índice e sitemap', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const pkg = JSON.parse(await readFile(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'));
+  assert.ok(pkg.scripts['corrigir-publicados'], 'sem comando de conserto, o operador fica sem saída');
+});

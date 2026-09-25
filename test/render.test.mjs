@@ -216,3 +216,32 @@ test('página não exibe "atualizado em" para republicação', () => {
     frontmatter: { ...fm, publishedAt: '2026-08-22T18:56:00Z', updatedAt: '2026-08-22T19:16:00Z' } });
   assert.ok(!html.includes('atualizado em'));
 });
+
+// Lote vazio: regerar índice e sitemap sem reescrever artigo nenhum. É o que o
+// conserto do status usa depois de corrigir o banco.
+test('publicação com lote vazio ainda escreve índice e sitemap', async () => {
+  const { mock } = await import('node:test');
+  let recebido = null;
+  mock.module('../lib/adapters/github.mjs', {
+    namedExports: {
+      publish: async (cfg) => { recebido = cfg; return { commitSha: 'abc123' }; },
+      healthCheck: async () => ({ ok: true }),
+    },
+  });
+  const { publish } = await import('../lib/adapters/index.mjs');
+  const cliente = {
+    name: 'Exemplo', domain: 'exemplo.com.br', publish_adapter: 'github',
+    adapter_config: { baseUrl: 'https://exemplo.com.br', blogBasePath: '/blog',
+                      contentDir: 'blog', sitemapPath: 'sitemap-blog.xml' },
+  };
+  const r = await publish(cliente, [], [{
+    slug: 'ja-publicado', title: 'Já publicado', description: 'd', cluster: 'x',
+    frontmatter: { title: 'Já publicado', description: 'd' },
+    first_published_at: new Date('2026-09-01T10:00:00Z'),
+    content_updated_at: new Date('2026-09-01T10:00:00Z'),
+  }]);
+  assert.deepEqual(recebido.files.map((f) => f.path).sort(), ['blog/index.html', 'sitemap-blog.xml']);
+  assert.match(recebido.message, /índice e sitemap/);
+  assert.deepEqual(r.committed, []);
+  mock.restoreAll();
+});

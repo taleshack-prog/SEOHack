@@ -52,6 +52,9 @@
     },
     "api/logs.mjs": {
       "maxDuration": 30
+    },
+    "api/diagnostico.mjs": {
+      "maxDuration": 60
     }
   },
   "rewrites": [
@@ -74,6 +77,10 @@
     {
       "source": "/desempenho",
       "destination": "/api/ui/metrics"
+    },
+    {
+      "source": "/diagnostico",
+      "destination": "/api/diagnostico"
     }
   ]
 }

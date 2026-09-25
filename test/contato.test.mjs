@@ -86,11 +86,13 @@ test('Brevo fora do ar não derruba o recebimento', async () => {
 // --- endpoint -------------------------------------------------------------
 let GRAVADOS = [];
 let FALHA = null;
+let REPETIDO = false;
 
 mock.module('../lib/db.mjs', {
   namedExports: {
     sql: (strings, ...vals) => {
       const q = strings.join(' ');
+      if (/SELECT 1 FROM leads/i.test(q)) return Promise.resolve(REPETIDO ? [{ '?column?': 1 }] : []);
       if (/INSERT INTO leads/i.test(q)) {
         if (FALHA) return Promise.reject(new Error(FALHA));
         GRAVADOS.push(vals);
@@ -132,13 +134,23 @@ test('POST inválido não grava e explica o motivo', async () => {
   assert.equal(GRAVADOS.length, 0);
 });
 
-test('duplo clique não vira erro para quem enviou', async () => {
-  FALHA = 'duplicate key value violates unique constraint';
+test('duplo clique não grava de novo nem vira erro', async () => {
+  GRAVADOS = []; REPETIDO = true;
   const res = fakeRes();
   await contato(post(bom), res);
-  FALHA = null;
+  REPETIDO = false;
   assert.equal(res.statusCode, 200);
   assert.equal(JSON.parse(res.body).duplicado, true);
+  assert.equal(GRAVADOS.length, 0, 'a mensagem repetida não pode ser gravada duas vezes');
+});
+
+test('freio fora do ar não impede o recebimento', async () => {
+  GRAVADOS = [];
+  const res = fakeRes();
+  // A consulta de freio falha, o INSERT segue.
+  await contato(post({ ...bom, mensagem: `${bom.mensagem} variação` }), res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(GRAVADOS.length, 1);
 });
 
 test('falha real do banco devolve 500, não silêncio', async () => {

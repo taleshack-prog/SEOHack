@@ -56,6 +56,22 @@ export default async function handler(req, res) {
   if (!check.ok) return json(res, 422, { ok: false, erro: check.erro });
 
   const { lead } = check;
+
+  // Duplo clique e robô insistente gravam a mesma mensagem duas vezes. O freio
+  // é uma consulta, não um índice de unicidade: índice exigiria expressão
+  // IMMUTABLE, e qualquer recorte de tempo em timestamptz não é.
+  try {
+    const [repetido] = await sql`
+      SELECT 1 FROM leads
+       WHERE ip_hash = ${hashIp(req)} AND mensagem = ${lead.mensagem}
+         AND created_at > NOW() - INTERVAL '1 minute'
+       LIMIT 1`;
+    if (repetido) return json(res, 200, { ok: true, duplicado: true });
+  } catch (err) {
+    // Consulta de freio não pode impedir recebimento: se ela falhar, segue.
+    console.error('[contato] freio indisponível:', err.message);
+  }
+
   let id = null;
   try {
     const [row] = await sql`
@@ -65,8 +81,8 @@ export default async function handler(req, res) {
       RETURNING id`;
     id = row?.id || null;
   } catch (err) {
-    // O índice anti-enxurrada rejeita mensagem idêntica do mesmo IP no mesmo
-    // minuto. Para quem enviou, isso é duplo clique — e duplo clique não é erro.
+    // Corrida entre dois envios simultâneos ainda pode esbarrar em unicidade
+    // futura; para quem enviou, isso é duplo clique, não erro.
     if (/duplicate key|unique/i.test(err.message)) return json(res, 200, { ok: true, duplicado: true });
     console.error('[contato] falha ao gravar:', err.message);
     return json(res, 500, { ok: false, erro: 'Não consegui registrar agora. Tente de novo em instantes.' });

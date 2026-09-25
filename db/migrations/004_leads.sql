@@ -47,10 +47,12 @@ CREATE INDEX IF NOT EXISTS idx_leads_novos
   ON leads (created_at DESC)
   WHERE status = 'novo';
 
--- Freio de spam no banco, não só no código: o mesmo IP não grava mais de uma
--- mensagem idêntica por minuto.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_antiflood
-  ON leads (ip_hash, md5(mensagem), date_trunc('minute', created_at));
+-- O freio de enxurrada fica no código (api/contato.mjs), não aqui: índice de
+-- unicidade precisa de expressão IMMUTABLE, e date_trunc sobre timestamptz
+-- depende do fuso da sessão — o Postgres recusa com 42P17. Este índice serve
+-- à consulta que o endpoint faz antes de gravar.
+CREATE INDEX IF NOT EXISTS idx_leads_flood
+  ON leads (ip_hash, created_at DESC);
 
 COMMENT ON TABLE leads IS
   'Contatos recebidos pelo endpoint público /api/contato. O e-mail é aviso; a fonte de verdade é esta tabela.';

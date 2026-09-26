@@ -8,14 +8,15 @@
 // Não chama o LLM — monta a lista a partir do banco e regrava o HTML. Custo
 // zero, então pode ser acionado à vontade.
 import { requireAuth } from '../../lib/auth.mjs';
-import { sql, getClient } from '../../lib/db.mjs';
+import { sql } from '../../lib/db.mjs';
+import { clienteAtual } from '../../lib/tenant.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
 import { pillarsToRefresh } from '../../lib/cluster-links.mjs';
 import { publish as publishViaAdapter } from '../../lib/adapters/index.mjs';
 
 export default requireAuth(async (req, res) => {
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
-  const client = await getClient();
+  const client = await clienteAtual(req);
 
   const resultado = await runStage(client.id, 'optimization', async () => {
     const publicados = await sql`

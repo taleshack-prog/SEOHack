@@ -1,7 +1,8 @@
 // Fila. A pergunta que esta tela responde é uma só: o que está parado esperando
 // o Tales? Depois disso, o que ele pode mandar produzir.
 import { requireAuth } from '../../lib/auth.mjs';
-import { sql, getClient } from '../../lib/db.mjs';
+import { sql } from '../../lib/db.mjs';
+import { clienteAtual } from '../../lib/tenant.mjs';
 import { parseNotes } from '../../lib/notes.mjs';
 import { findUnsourcedStats } from '../../lib/validate.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
@@ -9,7 +10,7 @@ import { page, send, esc } from '../../lib/ui.mjs';
 const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
 
 export default requireAuth(async (req, res) => {
-  const client = await getClient();
+  const client = await clienteAtual(req);
 
   const held = await sql`
     SELECT id, slug, title, cluster, is_pillar, word_count, markdown, created_at
@@ -222,5 +223,6 @@ ${noAr.length ? `<table>
 <p class="note">US$ ${esc(Number(budget?.spent_usd || 0).toFixed(2))} gastos de
 US$ ${esc(budget?.monthly_budget_usd || '0')}. A geração para automaticamente ao esgotar.</p>`;
 
-  send(res, page({ title: 'Fila de revisão', body, flash, refresh: rodando ? 20 : 0 }));
+  send(res, page({ title: 'Fila de revisão', body, flash, cliente: client.name,
+                   refresh: rodando ? 20 : 0 }));
 });

@@ -9,7 +9,8 @@
 // alimenta. A fila lê de lá — não há estado em memória para se perder.
 import { waitUntil } from '@vercel/functions';
 import { requireAuth, readBody } from '../../lib/auth.mjs';
-import { getClient, sql } from '../../lib/db.mjs';
+import { sql } from '../../lib/db.mjs';
+import { clienteAtual } from '../../lib/tenant.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
 import { generateBatch } from '../../lib/content-engine.mjs';
 
@@ -17,7 +18,7 @@ export default requireAuth(async (req, res) => {
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
 
   const { topic_id } = await readBody(req);
-  const client = await getClient();
+  const client = await clienteAtual(req);
 
   // Sem tópico aprovado não há o que gerar — e dizer "produção iniciada, leva
   // de 2 a 5 minutos" nesse caso faz o operador esperar por algo que terminou

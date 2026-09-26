@@ -32,7 +32,7 @@
       "includeFiles": "prompts/**"
     },
     "api/cron/tracking.mjs": {
-      "maxDuration": 180,
+      "maxDuration": 300,
       "includeFiles": "prompts/**"
     },
     "api/cron/citation.mjs": {
@@ -92,6 +92,10 @@
     {
       "source": "/topicos",
       "destination": "/api/ui/topicos"
+    },
+    {
+      "source": "/clientes",
+      "destination": "/api/ui/clientes"
     }
   ]
 }

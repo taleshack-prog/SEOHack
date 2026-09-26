@@ -5,18 +5,33 @@
 //     sem ela, cada recoleta duplicava linha e distorcia toda a tendência.
 // D6: ctr gravado como fração crua, exatamente como o GSC devolve.
 import { cronHandler } from '../../lib/cron-auth.mjs';
-import { sql, getClient, withTenant } from '../../lib/db.mjs';
+import { sql, listClients, withTenant } from '../../lib/db.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
 import { defaultWindow, byPage } from '../../lib/search-console.mjs';
 
 export default cronHandler(async () => {
-  const client = await getClient();
+  // Um cron para todos os sites. Cada cliente tem a própria propriedade na
+  // Search Console; rodar um por vez mantém o isolamento e faz com que a falha
+  // de um (propriedade sem permissão, por exemplo) não derrube os outros.
+  const clientes = await listClients();
+  const resultados = [];
+  for (const client of clientes) {
+    try {
+      resultados.push({ cliente: client.domain, ...(await coletar(client)) });
+    } catch (err) {
+      console.error(`[tracking] ${client.domain}: ${err.message}`);
+      resultados.push({ cliente: client.domain, erro: err.message });
+    }
+  }
+  return { clientes: resultados };
+});
 
+async function coletar(client) {
   return runStage(client.id, 'tracking', async () => {
     const window = defaultWindow(3);
     let rows;
     try {
-      rows = await byPage(window);
+      rows = await byPage(window, 1000, { property: client.gsc_property });
     } catch (err) {
       if (err.quota) {
         // PRD §32 stale-while-revalidate: marca o dado mais recente como
@@ -61,4 +76,4 @@ export default cronHandler(async () => {
 
     return { processed: blogRows.length, succeeded: saved, window };
   });
-});
+}

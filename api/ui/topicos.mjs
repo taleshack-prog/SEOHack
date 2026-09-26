@@ -8,7 +8,8 @@
 // GET  /topicos          → formulário + o que já está na fila
 // POST /api/ui/topicos   → grava
 import { requireAuth, readBody } from '../../lib/auth.mjs';
-import { sql, getClient } from '../../lib/db.mjs';
+import { sql } from '../../lib/db.mjs';
+import { clienteAtual } from '../../lib/tenant.mjs';
 import { parseTopicos, TIPOS } from '../../lib/topics.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 
@@ -30,10 +31,11 @@ const EXEMPLO = `* Guia completo de criação de gatos bengal
 Quanto custa castrar um gato em Porto Alegre | 480
 Herança da cor dos olhos em felinos | 210 | 30`;
 
-function render({ clusters, fila, flash = null, texto = '', padrao = {} }) {
+function render({ clusters, fila, cliente = null, flash = null, texto = '', padrao = {} }) {
   return page({
     title: 'Novos tópicos',
     flash,
+    cliente,
     body: `<style>${CSS}</style>
 <p class="sub" style="margin-bottom:6px"><a href="/">← Fila</a></p>
 <h1 class="lede">O que você quer <em>responder</em> a seguir?</h1>
@@ -88,7 +90,7 @@ ${fila.length ? `<table>
   });
 }
 
-async function estado(clientId) {
+async function estado(clientId, nome = null) {
   const [clusters, fila] = await Promise.all([
     sql`SELECT DISTINCT cluster FROM topics
          WHERE client_id = ${clientId} AND cluster IS NOT NULL ORDER BY cluster`,
@@ -96,14 +98,14 @@ async function estado(clientId) {
          WHERE client_id = ${clientId} AND status IN ('pending','approved')
          ORDER BY is_pillar DESC, opportunity_score DESC NULLS LAST`,
   ]);
-  return { clusters: clusters.map((c) => c.cluster), fila };
+  return { clusters: clusters.map((c) => c.cluster), fila, cliente: nome };
 }
 
 export default requireAuth(async (req, res) => {
-  const client = await getClient();
+  const client = await clienteAtual(req);
 
   if (req.method !== 'POST') {
-    return send(res, render(await estado(client.id)));
+    return send(res, render(await estado(client.id, client.name)));
   }
 
   const body = await readBody(req);
@@ -112,7 +114,7 @@ export default requireAuth(async (req, res) => {
 
   if (!topicos.length) {
     return send(res, render({
-      ...(await estado(client.id)),
+      ...(await estado(client.id, client.name)),
       texto: body.topicos || '',
       padrao,
       flash: { text: erros[0] || 'Escreva ao menos um tópico.', bad: true },

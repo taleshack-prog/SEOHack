@@ -44,7 +44,9 @@ const TOPICO = { id: 't1', topic: 'Um tópico', cluster: 'saas', is_pillar: fals
 /** Devolve linhas conforme o que a consulta pede. */
 function fakeSql(strings) {
   const q = strings.join(' ').replace(/\s+/g, ' ');
-  if (/FROM clients/i.test(q) && !/v_budget_status/i.test(q)) return Promise.resolve([CLIENTE]);
+  if (/FROM clients c LEFT JOIN articles/i.test(q)) return Promise.resolve([{ id: CLIENTE.id, artigos: 24, fila: 2 }]);
+  if (/FROM clients/i.test(q) && !/v_budget_status/i.test(q)) return Promise.resolve([CLIENTE, {
+    ...CLIENTE, id: 'c2', name: 'GenBreed', domain: 'genbreed.com.br' }]);
   if (/v_budget_status/i.test(q)) return Promise.resolve([{ client_id: CLIENTE.id, name: 'Exemplo',
     monthly_budget_usd: '50.00', spent_usd: '1.19', remaining_usd: '48.81' }]);
   // A fila de presos usa a MESMA tabela; separa pelo estado consultado.
@@ -73,7 +75,9 @@ function fakeSql(strings) {
 mock.module('../lib/db.mjs', {
   namedExports: {
     sql: fakeSql,
-    getClient: async () => CLIENTE,
+    getClient: async (d) => (d && d !== CLIENTE.domain
+      ? { ...CLIENTE, id: 'c2', name: 'GenBreed', domain: d } : CLIENTE),
+    listClients: async () => [CLIENTE, { ...CLIENTE, id: 'c2', name: 'GenBreed', domain: 'genbreed.com.br' }],
     withTenant: async (_id, fn) => fn({ query: async () => ({ rows: [] }) }),
   },
 });
@@ -329,4 +333,36 @@ test('painel não manda mais o operador rodar npm run seed', async () => {
   const src = await readFile(fileURLToPath(new URL('../api/ui/home.mjs', import.meta.url)), 'utf8');
   assert.doesNotMatch(src, /npm run seed/);
   assert.match(src, /\/topicos/);
+});
+
+// --- multi-cliente no painel ---
+test('a tela de clientes lista os sites e marca o que está em uso', async () => {
+  const res = await renderiza('../api/ui/clientes.mjs');
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /GenBreed/);
+  assert.match(res.body, /em uso/);
+  assert.match(res.body, /Usar este/);
+  assert.doesNotMatch(res.body, /<input[^>]+name="token"/i, 'segredo não pode ter campo no formulário');
+});
+
+test('trocar de cliente grava o cookie e volta para a lista', async () => {
+  const mod = await import('../api/ui/clientes.mjs');
+  const res = fakeRes();
+  await mod.default(reqPost({ acao: 'trocar', dominio: 'genbreed.com.br' }), res);
+  assert.equal(res.statusCode, 302);
+  assert.match(res.headers['set-cookie'], /htf_cliente=genbreed\.com\.br/);
+  assert.match(res.headers['set-cookie'], /HttpOnly/);
+});
+
+test('domínio inválido não cadastra cliente', async () => {
+  const mod = await import('../api/ui/clientes.mjs');
+  const res = fakeRes();
+  await mod.default(reqPost({ acao: 'criar', name: 'X', dominio: 'não é domínio' }), res);
+  assert.equal(res.statusCode, 422);
+  assert.match(res.body, /não parece um domínio/);
+});
+
+test('a barra do painel mostra de qual cliente é a tela', async () => {
+  const res = await renderiza('../api/ui/home.mjs');
+  assert.match(res.body, /SEOHack <span>· Exemplo<\/span>/);
 });

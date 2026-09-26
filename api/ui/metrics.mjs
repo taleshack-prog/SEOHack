@@ -8,7 +8,8 @@
 // estiver ligada, a coluna de ranking mostra o motivo em vez de zeros, porque
 // zero sugere fracasso e ausência de dado não é fracasso.
 import { requireAuth } from '../../lib/auth.mjs';
-import { sql, getClient } from '../../lib/db.mjs';
+import { sql } from '../../lib/db.mjs';
+import { clienteAtual } from '../../lib/tenant.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 import { AGENTES_BUSCA, readCrawlerStatus } from '../../lib/crawlers.mjs';
 import { graficoLinha, graficoBarras, distribuicaoDeRanking } from '../../lib/charts.mjs';
@@ -17,7 +18,7 @@ const dinheiro = (v) => `US$ ${Number(v || 0).toFixed(2)}`;
 const dias = (d) => Math.floor((Date.now() - new Date(d)) / 86400000);
 
 export default requireAuth(async (req, res) => {
-  const client = await getClient();
+  const client = await clienteAtual(req);
 
   const artigos = (await sql`
     SELECT p.slug, p.title, p.cluster, p.is_pillar, p.status,
@@ -177,5 +178,5 @@ ${porAgente.length ? `<table>
 <p class="note">${dinheiro(orcamento?.spent_usd)} de ${dinheiro(orcamento?.monthly_budget_usd)} neste mês.
 A geração para automaticamente ao esgotar.</p>`;
 
-  send(res, page({ title: 'Desempenho', body }));
+  send(res, page({ title: 'Desempenho', body, cliente: client.name }));
 });

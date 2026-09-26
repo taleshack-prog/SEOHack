@@ -15,7 +15,7 @@
 // parseado: reserializar muda espaçamento e ordem de chaves, e a assinatura
 // deixa de bater de forma intermitente.
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { sql, getClient, withTenant } from '../lib/db.mjs';
+import { listClients, withTenant } from '../lib/db.mjs';
 import { aggregate } from '../lib/crawlers.mjs';
 
 async function rawBody(req) {
@@ -80,19 +80,35 @@ export default async function handler(req, res) {
     return res.end(JSON.stringify({ ok: true, recebidos: logs.length, crawlers: 0 }));
   }
 
+  // Um drain pode receber logs de vários projetos da Vercel. O host decide de
+  // qual cliente é a visita; antes, tudo caía no cliente padrão, e o gráfico de
+  // crawlers de um site mostraria o rastreamento do outro.
   try {
-    const client = await getClient();
-    await withTenant(client.id, async (c) => {
-      for (const l of linhas) {
-        await c.query(
-          `INSERT INTO ai_crawler_hits (client_id, user_agent, path, status_code, hit_date, hit_count)
-           VALUES ($1,$2,$3,$4,$5,$6)
-           ON CONFLICT (client_id, user_agent, path, hit_date)
-           DO UPDATE SET hit_count = ai_crawler_hits.hit_count + EXCLUDED.hit_count,
-                         status_code = EXCLUDED.status_code`,
-          [client.id, l.agente, l.path, l.statusCode, l.data, l.hits]);
-      }
-    });
+    const clientes = await listClients();
+    const porDominio = new Map(clientes.map((c) => [c.domain.toLowerCase().replace(/^www\./, ''), c]));
+    const padrao = porDominio.get((process.env.CLIENT_DOMAIN || '').toLowerCase()) || clientes[0];
+
+    const porCliente = new Map();
+    for (const l of linhas) {
+      const dono = porDominio.get(l.host) || padrao;
+      if (!dono) continue;
+      if (!porCliente.has(dono.id)) porCliente.set(dono.id, []);
+      porCliente.get(dono.id).push(l);
+    }
+
+    for (const [clientId, itens] of porCliente) {
+      await withTenant(clientId, async (c) => {
+        for (const l of itens) {
+          await c.query(
+            `INSERT INTO ai_crawler_hits (client_id, user_agent, path, status_code, hit_date, hit_count)
+             VALUES ($1,$2,$3,$4,$5,$6)
+             ON CONFLICT (client_id, user_agent, path, hit_date)
+             DO UPDATE SET hit_count = ai_crawler_hits.hit_count + EXCLUDED.hit_count,
+                           status_code = EXCLUDED.status_code`,
+            [clientId, l.agente, l.path, l.statusCode, l.data, l.hits]);
+        }
+      });
+    }
   } catch (err) {
     // Erro de banco não deve fazer a Vercel reenviar o lote indefinidamente:
     // log perdido é aceitável, loop de reentrega não é.

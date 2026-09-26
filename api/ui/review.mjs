@@ -16,7 +16,8 @@
 // GET  /review/<slug>   → manuscrito, com lacunas quando houver
 // POST /api/ui/review   → costura as notas, valida, publica pelo adapter
 import { requireAuth, readBody } from '../../lib/auth.mjs';
-import { sql, getClient } from '../../lib/db.mjs';
+import { sql } from '../../lib/db.mjs';
+import { clienteAtual } from '../../lib/tenant.mjs';
 import { splitForReview, applyNotes, parseNotes } from '../../lib/notes.mjs';
 import { validateArticle, findUnsourcedStats } from '../../lib/validate.mjs';
 import { publish as publishViaAdapter } from '../../lib/adapters/index.mjs';
@@ -37,7 +38,7 @@ function marcar(trecho, numero) {
   return i < 0 ? t : `${t.slice(0, i)}<mark>${n}</mark>${t.slice(i + n.length)}`;
 }
 
-function render(article, { erro = null, aviso = null } = {}) {
+function render(article, { erro = null, aviso = null, cliente = null } = {}) {
   const jaPublicado = article.status === 'published';
   const parts = splitForReview(article.markdown || '');
   const corpo = parts.map((p) => p.type === 'text'
@@ -74,6 +75,7 @@ function render(article, { erro = null, aviso = null } = {}) {
 
   return page({
     title: article.title,
+    cliente,
     flash: erro ? { text: erro, bad: true } : (aviso ? { text: aviso } : null),
     body: `
 <p class="sub" style="margin-bottom:6px"><a href="/">← Fila</a>${
@@ -99,14 +101,14 @@ ${painelNumeros}
 }
 
 export default requireAuth(async (req, res) => {
-  const client = await getClient();
+  const client = await clienteAtual(req);
 
   if (req.method === 'GET') {
     const slug = req.query?.slug;
     const article = slug && await load(client.id, slug);
     if (!article) return send(res, page({ title: 'Não encontrado',
       body: '<h1 class="lede">Este artigo não existe.</h1><p class="sub"><a href="/">Voltar para a fila</a></p>' }), 404);
-    return send(res, render(article));
+    return send(res, render(article, { cliente: client.name }));
   }
 
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }

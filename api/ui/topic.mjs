@@ -3,12 +3,13 @@
 // que alguém disser que vale a pena. Tópico do seed já nasce aprovado, porque
 // o seed é a própria curadoria humana.
 import { requireAuth, readBody } from '../../lib/auth.mjs';
-import { sql, getClient } from '../../lib/db.mjs';
+import { sql } from '../../lib/db.mjs';
+import { clienteAtual } from '../../lib/tenant.mjs';
 
 export default requireAuth(async (req, res) => {
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
   const { topic_id, acao } = await readBody(req);
-  const client = await getClient();
+  const client = await clienteAtual(req);
 
   if (acao === 'aprovar') {
     await sql`UPDATE topics SET status='approved', approved_at=NOW()

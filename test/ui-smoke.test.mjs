@@ -477,3 +477,45 @@ test('cliente incompleto também não ganha o Gerar de cada linha', async () => 
     assert.doesNotMatch(res.body, /Gerar só este artigo/, 'ofereceu produção por linha sem destino');
   } finally { CLIENTE.adapter_config = original; }
 });
+
+// --- corrigir a marcação de pilar pelo painel ---
+//
+// No cluster do LinkedIn o guia foi publicado primeiro, como satélite, e a
+// marcação de pilar acabou num tópico que ainda estava na fila. Não havia como
+// desfazer nem uma coisa nem outra: "Pilar" era irreversível e "Descartar" só
+// aparecia em tópico 'pending'. O cluster ficaria com dois pilares ou nenhum.
+test('tópico aprovado também pode ser descartado', async () => {
+  const antes = TOPICO.status;
+  Object.assign(TOPICO, { status: 'approved' });
+  try {
+    const res = await renderiza('../api/ui/home.mjs');
+    assert.match(res.body, /value="descartar"/, 'tópico aprovado ficou sem saída');
+  } finally { Object.assign(TOPICO, { status: antes }); }
+});
+
+test('pilar marcado pode ser desmarcado', async () => {
+  const antes = TOPICO.is_pillar;
+  Object.assign(TOPICO, { is_pillar: true });
+  try {
+    const res = await renderiza('../api/ui/home.mjs');
+    assert.match(res.body, /value="despilar"/);
+    assert.doesNotMatch(res.body, /value="pilar"[^-]/, 'ofereceu marcar o que já é pilar');
+  } finally { Object.assign(TOPICO, { is_pillar: antes }); }
+});
+
+test('artigo publicado pode virar o pilar do cluster', async () => {
+  const antes = ARTIGO.is_pillar;
+  Object.assign(ARTIGO, { is_pillar: false, status: 'published' });
+  try {
+    const res = await renderiza('../api/ui/home.mjs');
+    assert.match(res.body, /value="pilar-artigo"/);
+  } finally { Object.assign(ARTIGO, { is_pillar: antes }); }
+});
+
+test('um pilar por cluster: marcar um desmarca os outros', async () => {
+  const src = await (await import('node:fs/promises'))
+    .readFile((await import('node:url')).fileURLToPath(new URL('../api/ui/topic.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /is_pillar = \(slug =/, 'marcou sem desmarcar os outros do cluster');
+  assert.match(src, /despilar/);
+  assert.match(src, /\/ \$\{PILLAR_MULTIPLIER\}/, 'desmarcar não desfaz o multiplicador do score');
+});

@@ -233,17 +233,17 @@ ${topics.length ? `<table>
         <input type="hidden" name="topic_id" value="${esc(t.id)}">
         <button class="ghost mini" title="Gerar só este artigo">Gerar</button>
       </form>`}
-      ${t.is_pillar ? '' : `
       <form method="POST" action="/api/ui/topic">
         <input type="hidden" name="topic_id" value="${esc(t.id)}">
-        <button name="acao" value="pilar" class="ghost mini"
-                title="Marcar como página pilar do cluster: vai para a frente da fila e os satélites linkam para ela">Pilar</button>
-      </form>`}
-      ${t.status === 'pending' ? `
+        <button name="acao" value="${t.is_pillar ? 'despilar' : 'pilar'}" class="ghost mini"
+                title="${t.is_pillar ? 'Deixar de ser a página pilar do cluster'
+                  : 'Marcar como página pilar do cluster: vai para a frente da fila e os satélites linkam para ela'}"
+                >${t.is_pillar ? 'Não é pilar' : 'Pilar'}</button>
+      </form>
       <form method="POST" action="/api/ui/topic">
         <input type="hidden" name="topic_id" value="${esc(t.id)}">
         <button name="acao" value="descartar" class="ghost mini">Descartar</button>
-      </form>` : ''}
+      </form>
     </div></td>
   </tr>`).join('')}</tbody></table>`
     : '<div class="empty"><strong>Fila vazia</strong><a href="/topicos">Escrever novos tópicos</a></div>'}
@@ -267,7 +267,15 @@ ${noAr.length ? `<table>
     <td>${esc(a.title)} ${a.is_pillar ? '<span class="pill pillar">pilar</span>' : ''}</td>
     <td class="num">${esc(a.cluster || '—')}</td>
     <td class="num">${new Date(a.first_published_at).toLocaleDateString('pt-BR')}</td>
-    <td class="num"><a href="/review/${esc(a.slug)}" class="pill">Editar</a></td>
+    <td class="num"><div class="row-actions">
+      ${a.is_pillar ? '' : `
+      <form method="POST" action="/api/ui/topic">
+        <input type="hidden" name="slug" value="${esc(a.slug)}">
+        <button name="acao" value="pilar-artigo" class="ghost mini"
+                title="Tornar este a página pilar do cluster — desmarca os outros">Pilar</button>
+      </form>`}
+      <a href="/review/${esc(a.slug)}" class="pill">Editar</a>
+    </div></td>
   </tr>`).join('')}</tbody></table>
 <p class="note">Editar abre o manuscrito. Republicar regrava o HTML no mesmo caminho, sem mudar a URL.</p>`
   : '<p class="note">Nenhum artigo publicado ainda.</p>'}

@@ -93,6 +93,9 @@ ${painelNumeros}
   <div class="actions">
     <button type="submit" name="acao" value="publicar">${jaPublicado ? 'Republicar' : 'Publicar artigo'}</button>
     <button type="submit" name="acao" value="salvar" class="ghost">Salvar sem publicar</button>
+    ${jaPublicado ? '' : `
+    <button type="submit" name="acao" value="arquivar" class="ghost"
+            title="Tira este artigo da fila de revisão sem publicar. O texto continua no banco.">Não publicar</button>`}
     <span class="note">${jaPublicado
       ? 'Republicar regrava o HTML no site. A data de publicação original é preservada.'
       : 'Publicar envia para o site e torna a página visível para buscadores.'}</span>
@@ -126,6 +129,34 @@ export default comErro(requireAuth(async (req, res) => {
   const markdown = typeof body.markdown === 'string' && body.markdown.trim()
     ? body.markdown.replace(/\r\n/g, '\n').trim()
     : applyNotes(article.markdown || '', notas);
+
+  // Artigo que não vai ao ar precisa de uma saída.
+  //
+  // Faltava: a tela só oferecia publicar e salvar, então um artigo escrito por
+  // engano — no caso real, um segundo guia que canibalizaria o primeiro —
+  // ficava para sempre em "esperando sua revisão", pedindo uma nota que
+  // ninguém ia escrever, e escondendo os artigos que realmente esperavam.
+  //
+  // 'archived' e não apagar: o texto foi pago e pode ser reaproveitado, e o
+  // histórico de custo por artigo continua fechando.
+  if (body.acao === 'arquivar') {
+    if (jaEstavaPublicado) {
+      res.statusCode = 302;
+      res.setHeader('Location', `/review/${encodeURIComponent(article.slug)}`);
+      return res.end();
+    }
+    await sql`UPDATE articles SET status = 'archived', updated_at = NOW() WHERE id = ${article.id}`;
+    // O tópico volta junto: sem isto ele fica em 'needs_human' e some da fila
+    // sem nunca ter virado artigo publicado nem tópico descartado.
+    if (article.topic_id) {
+      await sql`UPDATE topics SET status = 'rejected',
+                                  status_reason = 'artigo arquivado na revisão'
+                 WHERE id = ${article.topic_id} AND client_id = ${client.id}`;
+    }
+    res.statusCode = 302;
+    res.setHeader('Location', `/?arquivado=${encodeURIComponent(article.title)}`);
+    return res.end();
+  }
 
   if (body.acao === 'salvar') {
     await sql`

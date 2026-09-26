@@ -103,6 +103,8 @@ export default comErro(requireAuth(async (req, res) => {
   else if (req.query?.destravados) flash = {
     text: `${req.query.destravados} tópico(s) de volta à fila. O texto que estava sendo escrito quando a produção`
         + ' morreu foi descartado; eles serão reescritos do zero.' };
+  else if (req.query?.arquivado) flash = {
+    text: `"${req.query.arquivado}" saiu da fila de revisão sem ir ao ar. O texto continua no banco.` };
   else if (req.query?.aviso === 'cliente-incompleto') flash = {
     text: 'Nada foi gerado, e nada foi cobrado: falta configuração neste cliente. '
         + 'O que está faltando está logo abaixo.', bad: true };

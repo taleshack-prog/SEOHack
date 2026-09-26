@@ -519,3 +519,43 @@ test('um pilar por cluster: marcar um desmarca os outros', async () => {
   assert.match(src, /despilar/);
   assert.match(src, /\/ \$\{PILLAR_MULTIPLIER\}/, 'desmarcar não desfaz o multiplicador do score');
 });
+
+// --- artigo que não vai ao ar precisa de saída ---
+//
+// A tela de revisão só oferecia publicar e salvar. Um segundo guia, escrito por
+// engano e que canibalizaria o primeiro, ficava preso em "esperando sua
+// revisão" pedindo uma nota que ninguém ia escrever — e escondendo os artigos
+// que realmente esperavam.
+test('a revisão de artigo não publicado oferece não publicar', async () => {
+  const antes = { ...ARTIGO };
+  Object.assign(ARTIGO, { status: 'needs_human', first_published_at: null });
+  try {
+    const res = await renderiza('../api/ui/review.mjs', { query: { slug: ARTIGO.slug } });
+    assert.match(res.body, /value="arquivar"/);
+  } finally { Object.assign(ARTIGO, antes); }
+});
+
+test('artigo publicado não oferece arquivar', async () => {
+  const res = await renderiza('../api/ui/review.mjs', { query: { slug: ARTIGO.slug } });
+  assert.doesNotMatch(res.body, /value="arquivar"/, 'ofereceu tirar do ar o que já está no ar');
+});
+
+test('arquivar tira da fila e devolve o tópico', async () => {
+  const antes = { ...ARTIGO };
+  Object.assign(ARTIGO, { status: 'needs_human', first_published_at: null, topic_id: 't1' });
+  const mod = await import('../api/ui/review.mjs');
+  const res = fakeRes();
+  try {
+    await mod.default(reqPost({ slug: ARTIGO.slug, acao: 'arquivar' }), res);
+    assert.equal(res.statusCode, 302);
+    assert.match(res.headers.location, /arquivado=/);
+  } finally { Object.assign(ARTIGO, antes); }
+});
+
+test('arquivar não derruba artigo já publicado', async () => {
+  const mod = await import('../api/ui/review.mjs');
+  const res = fakeRes();
+  await mod.default(reqPost({ slug: ARTIGO.slug, acao: 'arquivar' }), res);
+  assert.equal(res.statusCode, 302);
+  assert.match(res.headers.location, /\/review\//, 'arquivou um artigo que está no ar');
+});

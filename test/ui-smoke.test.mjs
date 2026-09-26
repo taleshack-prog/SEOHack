@@ -48,6 +48,7 @@ function fakeSql(strings) {
   if (/v_budget_status/i.test(q)) return Promise.resolve([{ client_id: CLIENTE.id, name: 'Exemplo',
     monthly_budget_usd: '50.00', spent_usd: '1.19', remaining_usd: '48.81' }]);
   // A fila de presos usa a MESMA tabela; separa pelo estado consultado.
+  if (/SELECT DISTINCT cluster FROM topics/i.test(q)) return Promise.resolve([{ cluster: 'saas' }]);
   if (/FROM topics/i.test(q) && /status = 'writing'/.test(q)) return Promise.resolve(PRESOS);
   if (/UPDATE topics/i.test(q)) return Promise.resolve(PRESOS);
   if (/FROM topics/i.test(q)) return Promise.resolve([TOPICO]);
@@ -294,4 +295,38 @@ test('a tela de contatos lista o que chegou', async () => {
   assert.match(res.body, /Heitor Hack/);
   assert.match(res.body, /mailto:alguem@exemplo\.com/);
   assert.match(res.body, /Marcar como respondido/);
+});
+
+// A fila vazia não pode mandar o operador para o terminal.
+test('a tela de tópicos renderiza com formulário e fila atual', async () => {
+  const res = await renderiza('../api/ui/topicos.mjs');
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /name="topicos"/);
+  assert.match(res.body, /Adicionar à fila/);
+  assert.match(res.body, /Um tópico/, 'precisa listar o que já está na fila');
+});
+
+test('POST sem tópico válido explica e não redireciona', async () => {
+  const mod = await import('../api/ui/topicos.mjs');
+  const res = fakeRes();
+  await mod.default(reqPost({ topicos: 'curto', cluster: 'saas' }), res);
+  assert.equal(res.statusCode, 422);
+  assert.match(res.body, /curto demais/);
+});
+
+test('POST válido grava e volta para a fila com resumo', async () => {
+  const mod = await import('../api/ui/topicos.mjs');
+  const res = fakeRes();
+  await mod.default(reqPost({ topicos: '* Guia completo de alguma coisa\nOutro tópico bem escrito',
+                              cluster: 'novo', tipo: 'informational', afinidade: '1.2' }), res);
+  assert.equal(res.statusCode, 302);
+  assert.match(res.headers.location, /\?fila=/);
+});
+
+test('painel não manda mais o operador rodar npm run seed', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(fileURLToPath(new URL('../api/ui/home.mjs', import.meta.url)), 'utf8');
+  assert.doesNotMatch(src, /npm run seed/);
+  assert.match(src, /\/topicos/);
 });

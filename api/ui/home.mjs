@@ -78,8 +78,11 @@ export default requireAuth(async (req, res) => {
   if (req.query?.iniciado) flash = { text: 'Produção iniciada. Leva de 2 a 5 minutos — atualize a página para acompanhar.' };
   else if (req.query?.aviso === 'ja-rodando') flash = { text: 'Já existe uma produção em andamento.', bad: true };
   else if (req.query?.aviso === 'fila-vazia') flash = {
-    text: 'Nada foi gerado: a fila de tópicos está vazia. Abasteça com "npm run seed seeds/clusters.csv".',
+    text: 'Nada foi gerado: a fila de tópicos está vazia. Abasteça em Tópicos, no menu.',
     bad: true };
+  else if (req.query?.fila) flash = {
+    text: `Fila abastecida: ${esc(req.query.fila)}.`
+        + (req.query.linhas ? ` Linhas ignoradas: ${esc(req.query.linhas)}.` : '') };
   else if (req.query?.destravados) flash = {
     text: `${req.query.destravados} tópico(s) de volta à fila. O texto que estava sendo escrito quando a produção`
         + ' morreu foi descartado; eles serão reescritos do zero.' };
@@ -138,9 +141,9 @@ export default requireAuth(async (req, res) => {
       // com a fila vazia foi o que fez o operador esperar um dia inteiro.
       : `<div class="empty" style="text-align:left">
           <strong>Nada a produzir</strong>
-          A fila de tópicos está vazia. Edite <code>seeds/clusters.csv</code> com os temas
-          a atacar e rode <code>npm run seed seeds/clusters.csv</code>.
-          Os crons de segunda, quarta e sexta também não geram nada enquanto ela estiver assim.
+          A fila de tópicos está vazia, e os crons de segunda, quarta e sexta também não
+          geram nada enquanto ela estiver assim.
+          <p style="margin:14px 0 0"><a href="/topicos">Escrever novos tópicos →</a></p>
         </div>`;
 
   const body = `
@@ -201,7 +204,7 @@ ${topics.length ? `<table>
       </form>` : ''}
     </div></td>
   </tr>`).join('')}</tbody></table>`
-    : '<div class="empty"><strong>Fila vazia</strong>Rode <code>npm run seed</code> para abastecer.</div>'}
+    : '<div class="empty"><strong>Fila vazia</strong><a href="/topicos">Escrever novos tópicos</a></div>'}
 
 <h2 class="sec">No ar</h2>
 ${noAr.length ? `<table>

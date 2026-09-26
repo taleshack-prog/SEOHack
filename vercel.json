@@ -88,6 +88,10 @@
     {
       "source": "/contatos",
       "destination": "/api/ui/contatos"
+    },
+    {
+      "source": "/topicos",
+      "destination": "/api/ui/topicos"
     }
   ]
 }

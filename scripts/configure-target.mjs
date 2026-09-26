@@ -24,6 +24,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { sql, getClient } from '../lib/db.mjs';
 import { healthCheck } from '../lib/adapters/index.mjs';
+import { escolherRepo } from '../lib/alvo.mjs';
 
 const caminho = (p) => fileURLToPath(new URL(`../${p}`, import.meta.url));
 const lerJson = async (p) => JSON.parse(await readFile(caminho(p), 'utf8'));
@@ -49,11 +50,18 @@ if (!alvo) {
     '  Acrescente um bloco para ele antes de rodar.');
 }
 
-const repo = opcao('repo') || process.env.GITHUB_REPO || alvo.repo;
+// O específico ganha do genérico. Ver lib/alvo.mjs: o GITHUB_REPO do .env já
+// venceu o destino descrito para um cliente e configurou o Posthink para
+// publicar no repositório do site da Hack Tech Farm.
+const { repo, origem, conflito } = escolherRepo({
+  flag: opcao('repo'), alvo: alvo.repo, env: process.env.GITHUB_REPO });
+
 if (alvo.adapter === 'github' && !repo) {
   morrer(`✗ Falta o repositório de ${dominio}.`,
     '  Preencha "repo" no bloco dele em seeds/targets.json, ou passe --repo usuario/repositorio.');
 }
+if (conflito) console.warn(`⚠ ${conflito}`);
+
 
 const nomeDoToken = alvo.tokenEnv || 'GITHUB_TOKEN';
 const token = process.env[nomeDoToken];
@@ -107,7 +115,7 @@ await sql`
 
 console.log(`\n✓ Destino configurado — ${client.name} (${client.domain})\n`);
 console.log(`  adapter      ${alvo.adapter}`);
-if (repo) console.log(`  repositório  ${repo} (${config.branch})`);
+if (repo) console.log(`  repositório  ${repo} (${config.branch}) — de ${origem}`);
 console.log(`  pasta        ${config.contentDir}/`);
 console.log(`  URL base     ${config.baseUrl}${config.blogBasePath}/<slug>`);
 console.log(`  sitemap      ${config.baseUrl}/${String(config.sitemapPath).replace(/^public\//, '')}`);

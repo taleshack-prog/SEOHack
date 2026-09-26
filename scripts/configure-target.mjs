@@ -118,6 +118,6 @@ console.log(`  adapter      ${alvo.adapter}`);
 if (repo) console.log(`  repositório  ${repo} (${config.branch}) — de ${origem}`);
 console.log(`  pasta        ${config.contentDir}/`);
 console.log(`  URL base     ${config.baseUrl}${config.blogBasePath}/<slug>`);
-console.log(`  sitemap      ${config.baseUrl}/${String(config.sitemapPath).replace(/^public\//, '')}`);
+console.log(`  sitemap      ${config.baseUrl}/${String(config.sitemapPath).replace(/^.*?public\//, '')}`);
 console.log(`  moldura      ${Object.keys(shell).join(', ') || 'nenhuma (página sem cabeçalho do site)'}`);
 console.log(`  produtos     ${produtos.length ? produtos.map((p) => p.name).join(', ') : 'nenhum — cadastre em /produtos'}`);

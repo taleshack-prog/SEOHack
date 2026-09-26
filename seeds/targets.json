@@ -17,12 +17,12 @@
   },
 
   "posthink.com.br": {
-    "_nota": "App Next.js, não site estático. O Next serve tudo que está em public/ como arquivo, então public/blog/<slug>.html vira posthink.com.br/blog/<slug>.html sem build nenhum. Falta só o rewrite que tira o .html da URL — uma linha no next.config, entregue em blog-posthink.md.",
+    "_nota": "Monorepo: backend Python na raiz, site Vite+React em frontend/, que é a raiz do projeto na Vercel. O Vite copia frontend/public/ inteiro para o build, então frontend/public/blog/<slug>.html vira posthink.com.br/blog/<slug>.html. A URL sem .html vem do cleanUrls no frontend/vercel.json.",
     "adapter": "github",
-    "repo": "taleshack-prog/linkedin-app",
+    "repo": "taleshack-prog/Linkedin-App",
     "branch": "main",
-    "contentDir": "public/blog",
-    "sitemapPath": "public/sitemap-blog.xml",
+    "contentDir": "frontend/public/blog",
+    "sitemapPath": "frontend/public/sitemap-blog.xml",
     "keepSource": false,
     "baseUrl": "https://posthink.com.br",
     "blogBasePath": "/blog",

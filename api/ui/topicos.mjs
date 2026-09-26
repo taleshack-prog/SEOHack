@@ -11,7 +11,7 @@ import { requireAuth, readBody } from '../../lib/auth.mjs';
 import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
-import { parseTopicos, TIPOS } from '../../lib/topics.mjs';
+import { parseTopicos, TIPOS, FONTE_PAINEL } from '../../lib/topics.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 
 const CSS = `
@@ -124,6 +124,11 @@ export default comErro(requireAuth(async (req, res) => {
 
   // Mesmo INSERT do script de seed, inclusive o ON CONFLICT: tópico repetido
   // é atualizado enquanto não entrou em produção, e ignorado depois disso.
+  //
+  // `source` é 'manual' e não 'painel': a coluna tem CHECK (source IN
+  // ('seed','gsc','manual','gap')) desde a migração 001. O valor inventado aqui
+  // fez o Postgres recusar a linha com 23514 e a tela morrer em 500 — a origem
+  // do tópico digitado à mão já tinha nome no schema.
   let novos = 0;
   let atualizados = 0;
   let ignorados = 0;
@@ -131,7 +136,7 @@ export default comErro(requireAuth(async (req, res) => {
     const r = await sql`
       INSERT INTO topics (client_id, topic, source, cluster, is_pillar, keyword_type,
                           search_volume, difficulty_score, opportunity_score, status, approved_at)
-      VALUES (${client.id}, ${t.topic}, 'painel', ${t.cluster}, ${t.isPillar}, ${t.tipo},
+      VALUES (${client.id}, ${t.topic}, ${FONTE_PAINEL}, ${t.cluster}, ${t.isPillar}, ${t.tipo},
               ${t.volume}, ${t.dificuldade}, ${t.score}, 'approved', NOW())
       ON CONFLICT (client_id, topic_norm) DO UPDATE
         SET cluster = EXCLUDED.cluster, is_pillar = EXCLUDED.is_pillar,

@@ -9,12 +9,13 @@
 // alimenta. A fila lê de lá — não há estado em memória para se perder.
 import { waitUntil } from '@vercel/functions';
 import { requireAuth, readBody } from '../../lib/auth.mjs';
+import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
 import { generateBatch } from '../../lib/content-engine.mjs';
 
-export default requireAuth(async (req, res) => {
+export default comErro(requireAuth(async (req, res) => {
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
 
   const { topic_id } = await readBody(req);
@@ -52,4 +53,4 @@ export default requireAuth(async (req, res) => {
   res.statusCode = 302;
   res.setHeader('Location', rodando ? '/?aviso=ja-rodando' : '/?iniciado=1');
   res.end();
-});
+}));

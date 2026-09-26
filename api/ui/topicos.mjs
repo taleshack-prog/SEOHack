@@ -8,6 +8,7 @@
 // GET  /topicos          → formulário + o que já está na fila
 // POST /api/ui/topicos   → grava
 import { requireAuth, readBody } from '../../lib/auth.mjs';
+import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 import { parseTopicos, TIPOS } from '../../lib/topics.mjs';
@@ -101,7 +102,7 @@ async function estado(clientId, nome = null) {
   return { clusters: clusters.map((c) => c.cluster), fila, cliente: nome };
 }
 
-export default requireAuth(async (req, res) => {
+export default comErro(requireAuth(async (req, res) => {
   const client = await clienteAtual(req);
 
   if (req.method !== 'POST') {
@@ -155,4 +156,4 @@ export default requireAuth(async (req, res) => {
   res.setHeader('Location', `/?fila=${encodeURIComponent(partes.join(', '))}`
     + (erros.length ? `&linhas=${encodeURIComponent(erros.slice(0, 2).join(' · '))}` : ''));
   res.end();
-});
+}));

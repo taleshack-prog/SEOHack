@@ -8,6 +8,7 @@
 // estiver ligada, a coluna de ranking mostra o motivo em vez de zeros, porque
 // zero sugere fracasso e ausência de dado não é fracasso.
 import { requireAuth } from '../../lib/auth.mjs';
+import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
@@ -17,7 +18,7 @@ import { graficoLinha, graficoBarras, distribuicaoDeRanking } from '../../lib/ch
 const dinheiro = (v) => `US$ ${Number(v || 0).toFixed(2)}`;
 const dias = (d) => Math.floor((Date.now() - new Date(d)) / 86400000);
 
-export default requireAuth(async (req, res) => {
+export default comErro(requireAuth(async (req, res) => {
   const client = await clienteAtual(req);
 
   const artigos = (await sql`
@@ -179,4 +180,4 @@ ${porAgente.length ? `<table>
 A geração para automaticamente ao esgotar.</p>`;
 
   send(res, page({ title: 'Desempenho', body, cliente: client.name }));
-});
+}));

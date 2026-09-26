@@ -13,6 +13,7 @@
 // GET  /clientes          → lista + cadastro
 // POST /api/ui/clientes   → cadastra ou troca o cliente da sessão
 import { requireAuth, readBody } from '../../lib/auth.mjs';
+import { comErro } from '../../lib/erro.mjs';
 import { sql, listClients } from '../../lib/db.mjs';
 import { clienteAtual, gravarClienteCookie } from '../../lib/tenant.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
@@ -118,7 +119,7 @@ async function estado(req) {
   return { clientes, atual, contagens: new Map(linhas.map((l) => [l.id, l])) };
 }
 
-export default requireAuth(async (req, res) => {
+export default comErro(requireAuth(async (req, res) => {
   if (req.method !== 'POST') return send(res, render(await estado(req)));
 
   const body = await readBody(req);
@@ -158,4 +159,4 @@ export default requireAuth(async (req, res) => {
   res.statusCode = 302;
   res.setHeader('Location', '/clientes');
   res.end();
-});
+}));

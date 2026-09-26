@@ -1,6 +1,7 @@
 // Fila. A pergunta que esta tela responde é uma só: o que está parado esperando
 // o Tales? Depois disso, o que ele pode mandar produzir.
 import { requireAuth } from '../../lib/auth.mjs';
+import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 import { parseNotes } from '../../lib/notes.mjs';
@@ -9,7 +10,7 @@ import { page, send, esc } from '../../lib/ui.mjs';
 
 const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
 
-export default requireAuth(async (req, res) => {
+export default comErro(requireAuth(async (req, res) => {
   const client = await clienteAtual(req);
 
   const held = await sql`
@@ -225,4 +226,4 @@ US$ ${esc(budget?.monthly_budget_usd || '0')}. A geração para automaticamente 
 
   send(res, page({ title: 'Fila de revisão', body, flash, cliente: client.name,
                    refresh: rodando ? 20 : 0 }));
-});
+}));

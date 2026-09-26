@@ -8,13 +8,14 @@
 // Não chama o LLM — monta a lista a partir do banco e regrava o HTML. Custo
 // zero, então pode ser acionado à vontade.
 import { requireAuth } from '../../lib/auth.mjs';
+import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
 import { pillarsToRefresh } from '../../lib/cluster-links.mjs';
 import { publish as publishViaAdapter } from '../../lib/adapters/index.mjs';
 
-export default requireAuth(async (req, res) => {
+export default comErro(requireAuth(async (req, res) => {
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
   const client = await clienteAtual(req);
 
@@ -62,4 +63,4 @@ export default requireAuth(async (req, res) => {
   res.statusCode = 302;
   res.setHeader('Location', `/?clusters=${encodeURIComponent(msg)}`);
   res.end();
-});
+}));

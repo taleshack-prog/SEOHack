@@ -16,6 +16,7 @@
 // GET  /review/<slug>   → manuscrito, com lacunas quando houver
 // POST /api/ui/review   → costura as notas, valida, publica pelo adapter
 import { requireAuth, readBody } from '../../lib/auth.mjs';
+import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 import { splitForReview, applyNotes, parseNotes } from '../../lib/notes.mjs';
@@ -100,7 +101,7 @@ ${painelNumeros}
   });
 }
 
-export default requireAuth(async (req, res) => {
+export default comErro(requireAuth(async (req, res) => {
   const client = await clienteAtual(req);
 
   if (req.method === 'GET') {
@@ -218,4 +219,4 @@ export default requireAuth(async (req, res) => {
     ? `&pendente=${encodeURIComponent(herdados.map((e) => e.rule).join(', '))}` : '';
   res.setHeader('Location', `/?${rotulo}=${encodeURIComponent(article.title)}${pendente}`);
   res.end();
-});
+}));

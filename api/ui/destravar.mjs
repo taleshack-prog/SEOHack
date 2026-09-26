@@ -10,10 +10,11 @@
 // leva de 2 a 5 minutos, e o limite da função é de 10. Nada em execução
 // legítima chega perto disso.
 import { requireAuth } from '../../lib/auth.mjs';
+import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 
-export default requireAuth(async (req, res) => {
+export default comErro(requireAuth(async (req, res) => {
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
   const client = await clienteAtual(req);
 
@@ -28,4 +29,4 @@ export default requireAuth(async (req, res) => {
   res.statusCode = 302;
   res.setHeader('Location', `/?destravados=${devolvidos.length}`);
   res.end();
-});
+}));

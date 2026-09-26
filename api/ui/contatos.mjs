@@ -7,6 +7,7 @@
 // GET  /contatos          → lista
 // POST /api/ui/contatos   → marca respondido ou descartado
 import { requireAuth, readBody } from '../../lib/auth.mjs';
+import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 
@@ -70,7 +71,7 @@ ${leads.length ? leads.map((l) => `
   });
 }
 
-export default requireAuth(async (req, res) => {
+export default comErro(requireAuth(async (req, res) => {
   if (req.method === 'POST') {
     const body = await readBody(req);
     const acao = body.acao === 'descartado' ? 'descartado' : 'respondido';
@@ -87,4 +88,4 @@ export default requireAuth(async (req, res) => {
      LIMIT 100`;
 
   return send(res, render(leads));
-});
+}));

@@ -3,10 +3,11 @@
 // que alguém disser que vale a pena. Tópico do seed já nasce aprovado, porque
 // o seed é a própria curadoria humana.
 import { requireAuth, readBody } from '../../lib/auth.mjs';
+import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 
-export default requireAuth(async (req, res) => {
+export default comErro(requireAuth(async (req, res) => {
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
   const { topic_id, acao } = await readBody(req);
   const client = await clienteAtual(req);
@@ -21,4 +22,4 @@ export default requireAuth(async (req, res) => {
   res.statusCode = 302;
   res.setHeader('Location', '/');
   res.end();
-});
+}));

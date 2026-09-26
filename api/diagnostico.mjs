@@ -13,6 +13,7 @@
 // GET /diagnostico            → formulário
 // GET /diagnostico?site=x.com → relatório
 import { auditarSite } from '../lib/audit.mjs';
+import { isValid, readCookie } from '../lib/auth.mjs';
 import { page, send, esc } from '../lib/ui.mjs';
 
 const ROTULO = { ok: 'ok', alerta: 'atenção', falha: 'falha' };
@@ -85,7 +86,10 @@ ${checks.map((c) => `
 
 export default async function handler(req, res) {
   const site = (req.query?.site || '').trim();
+  // Mesma página para todo mundo; só a barra muda para quem tem sessão.
+  const operador = isValid(readCookie(req));
   const corpo = (dentro) => page({
+    operador,
     title: site ? `Diagnóstico de ${site}` : 'Diagnóstico de site',
     descricao: 'Diagnóstico gratuito: sitemap, robots, dados estruturados e acesso dos robôs de IA. '
       + 'Sem cadastro e sem métrica inventada.',

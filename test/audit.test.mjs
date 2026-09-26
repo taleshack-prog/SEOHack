@@ -128,6 +128,25 @@ test('nenhum texto do diagnóstico promete métrica que não medimos', async () 
   assert.doesNotMatch(src, /Domain Authority:\s*\d|DA\s*\d+|\d+%\s*(a|de)\s*mais/i);
 });
 
+test('operador logado tem caminho de volta ao painel', async () => {
+  process.env.DASHBOARD_SECRET = 'z'.repeat(64);
+  const { issue } = await import('../lib/auth.mjs');
+  const mod = await import('../api/diagnostico.mjs');
+  const res = { statusCode: 200, body: '', headers: {},
+    setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(b) { if (b) this.body += b; } };
+  await mod.default({ method: 'GET', query: {},
+    headers: { cookie: `htf_session=${encodeURIComponent(issue())}` } }, res);
+  assert.match(res.body, /Voltar ao painel/);
+});
+
+test('visitante não vê porta de serviço para o painel', async () => {
+  const mod = await import('../api/diagnostico.mjs');
+  const res = { statusCode: 200, body: '', headers: {},
+    setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(b) { if (b) this.body += b; } };
+  await mod.default({ method: 'GET', query: {}, headers: {} }, res);
+  assert.doesNotMatch(res.body, /Voltar ao painel/);
+});
+
 test('a tela pública renderiza o formulário e é indexável', async () => {
   const mod = await import('../api/diagnostico.mjs');
   const res = { statusCode: 200, body: '', headers: {},

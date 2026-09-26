@@ -1,0 +1,47 @@
+{
+  "_leia": "Destino de publicação de cada cliente, por domínio. O token NÃO mora aqui: vem do .env, pelo nome em 'tokenEnv' (padrão GITHUB_TOKEN). Aplique com: npm run configure <domínio>. O script preserva a chave 'products' do adapter_config, que é editada pela tela /produtos do painel.",
+
+  "hacktechfarm.com.br": {
+    "adapter": "github",
+    "repo": "taleshack-prog/Hack-Tech-Farm-site",
+    "branch": "main",
+    "contentDir": "blog",
+    "sitemapPath": "sitemap-blog.xml",
+    "keepSource": false,
+    "baseUrl": "https://hacktechfarm.com.br",
+    "blogBasePath": "/blog",
+    "cssHref": "/css/styles.css",
+    "authorUrl": "https://hacktechfarm.com.br/sobre",
+    "productPaths": ["/produtos", "/posthink", "/neuroart", "/asphalt", "/galeria", "/contato"],
+    "shellFile": "seeds/site-shell.json"
+  },
+
+  "posthink.com.br": {
+    "_nota": "App Next.js, não site estático. O Next serve tudo que está em public/ como arquivo, então public/blog/<slug>.html vira posthink.com.br/blog/<slug>.html sem build nenhum. Falta só o rewrite que tira o .html da URL — uma linha no next.config, entregue em blog-posthink.md.",
+    "adapter": "github",
+    "repo": "taleshack-prog/linkedin-app",
+    "branch": "main",
+    "contentDir": "public/blog",
+    "sitemapPath": "public/sitemap-blog.xml",
+    "keepSource": false,
+    "baseUrl": "https://posthink.com.br",
+    "blogBasePath": "/blog",
+    "authorUrl": "https://posthink.com.br",
+    "productPaths": [],
+    "shellFile": "seeds/shell-posthink.json"
+  },
+
+  "genbreed.com.br": {
+    "_nota": "Ainda sem destino decidido. Preencha repo e contentDir antes de rodar o configure para este domínio.",
+    "adapter": "github",
+    "repo": "",
+    "branch": "main",
+    "contentDir": "public/blog",
+    "sitemapPath": "public/sitemap-blog.xml",
+    "keepSource": false,
+    "baseUrl": "https://genbreed.com.br",
+    "blogBasePath": "/blog",
+    "authorUrl": "https://genbreed.com.br",
+    "productPaths": []
+  }
+}

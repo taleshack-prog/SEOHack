@@ -98,8 +98,8 @@ export default comErro(requireAuth(async (req, res) => {
     text: 'Nada foi gerado: a fila de tópicos está vazia. Abasteça em Tópicos, no menu.',
     bad: true };
   else if (req.query?.fila) flash = {
-    text: `Fila abastecida: ${esc(req.query.fila)}.`
-        + (req.query.linhas ? ` Linhas ignoradas: ${esc(req.query.linhas)}.` : '') };
+    text: `Fila abastecida: ${req.query.fila}.`
+        + (req.query.linhas ? ` Linhas ignoradas: ${req.query.linhas}.` : '') };
   else if (req.query?.destravados) flash = {
     text: `${req.query.destravados} tópico(s) de volta à fila. O texto que estava sendo escrito quando a produção`
         + ' morreu foi descartado; eles serão reescritos do zero.' };
@@ -108,19 +108,19 @@ export default comErro(requireAuth(async (req, res) => {
         + 'O que está faltando está logo abaixo.', bad: true };
   else if (req.query?.aviso === 'topico-indisponivel') flash = {
     text: 'Este tópico não está mais disponível — pode ter sido publicado ou descartado.', bad: true };
-  else if (req.query?.ok) flash = { text: `Publicado. ${esc(req.query.ok)} está no ar.` };
+  else if (req.query?.ok) flash = { text: `Publicado. ${req.query.ok} está no ar.` };
   else if (req.query?.republicado) flash = {
-    text: `Republicado. ${esc(req.query.republicado)} foi regravado no site.`
-        + (req.query.pendente ? ` Continua com pendências anteriores: ${esc(req.query.pendente)}.` : ''),
+    text: `Republicado. ${req.query.republicado} foi regravado no site.`
+        + (req.query.pendente ? ` Continua com pendências anteriores: ${req.query.pendente}.` : ''),
     bad: Boolean(req.query.pendente) };
   else if (req.query?.clusters === 'ja-sincronizado') flash = { text: 'Todos os pilares já estavam sincronizados.' };
-  else if (req.query?.clusters) flash = { text: `Pilares atualizados com links para os satélites (${esc(req.query.clusters)}).` };
+  else if (req.query?.clusters) flash = { text: `Pilares atualizados com links para os satélites (${req.query.clusters}).` };
   else if (!rodando && run && run.items_succeeded < run.items_processed) {
     // 'partial' = rodou, gastou tokens, e nada foi publicado. Sem este aviso o
     // operador via só o contador de custo subir, sem saber o porquê.
-    flash = { text: `Produção sem resultado: ${esc(run.error_message || 'sem detalhe registrado')}`, bad: true };
+    flash = { text: `Produção sem resultado: ${run.error_message || 'sem detalhe registrado'}`, bad: true };
   } else if (run?.status === 'failed' && !rodando) {
-    flash = { text: `Última produção falhou: ${esc(run.error_message || 'sem detalhe')}`, bad: true };
+    flash = { text: `Última produção falhou: ${run.error_message || 'sem detalhe'}`, bad: true };
   }
 
   const cards = held.map((a) => {
@@ -224,7 +224,11 @@ ${topics.length ? `<table>
     <td class="num">${esc(t.cluster || '—')}</td>
     <td class="num">${esc(t.opportunity_score || '—')}</td>
     <td class="num"><div class="row-actions">
-      ${rodando ? '<span class="pill">aguarde</span>' : `
+      ${rodando ? '<span class="pill">aguarde</span>'
+      // O pré-voo em /api/ui/generate barra o clique de qualquer jeito, mas
+      // oferecer o botão é prometer o que não vai acontecer.
+      : pendencias.length ? ''
+      : `
       <form method="POST" action="/api/ui/generate">
         <input type="hidden" name="topic_id" value="${esc(t.id)}">
         <button class="ghost mini" title="Gerar só este artigo">Gerar</button>

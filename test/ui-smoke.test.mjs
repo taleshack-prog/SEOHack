@@ -41,6 +41,10 @@ const ARTIGO = {
 // Mutável: cada teste decide se há tópico travado em produção.
 let PRESOS = [];
 
+// Última execução do pipeline. Vazio = nunca rodou.
+const RUN = { status: null, items_processed: 0, items_succeeded: 0, error_message: null,
+              started_at: new Date('2026-09-26T16:00:00Z'), finished_at: null };
+
 const TOPICO = { id: 't1', topic: 'Um tópico', cluster: 'saas', is_pillar: false,
                  status: 'approved', opportunity_score: '42.00', status_reason: null };
 
@@ -57,7 +61,7 @@ function fakeSql(strings) {
   if (/FROM topics/i.test(q) && /status = 'writing'/.test(q)) return Promise.resolve(PRESOS);
   if (/UPDATE topics/i.test(q)) return Promise.resolve(PRESOS);
   if (/FROM topics/i.test(q)) return Promise.resolve([TOPICO]);
-  if (/FROM pipeline_runs/i.test(q)) return Promise.resolve([]);
+  if (/FROM pipeline_runs/i.test(q)) return Promise.resolve(RUN.status ? [RUN] : []);
   if (/FROM ai_crawler_hits/i.test(q) && /hit_date::text/i.test(q)) return Promise.resolve([
     { user_agent: 'ClaudeBot', dia: '2026-08-22', hits: 30 },
     { user_agent: 'ClaudeBot', dia: '2026-08-23', hits: 47 },
@@ -447,4 +451,29 @@ test('artigo escrito e não publicado aparece no painel', async () => {
     const res = await renderiza('../api/ui/home.mjs');
     assert.match(res.body, /Escrito e fora do ar/);
   } finally { Object.assign(ARTIGO, antes); }
+});
+
+// --- o aviso não pode sair escapado duas vezes ---
+//
+// Apareceu em produção: «Produção sem resultado: &quot;Como o posthink...&quot;».
+// O handler chamava esc() no texto e o page() escapava de novo, então o &quot;
+// da primeira passagem virava &amp;quot; e aparecia cru na tela.
+test('regressão: aviso da fila não é escapado duas vezes', async () => {
+  const antes = { ...RUN };
+  Object.assign(RUN, { status: 'partial', items_processed: 1, items_succeeded: 0,
+                       error_message: '"Como o posthink.com.br trabalha" — validação local' });
+  try {
+    const res = await renderiza('../api/ui/home.mjs');
+    assert.doesNotMatch(res.body, /&amp;quot;/, 'escapou o texto do aviso duas vezes');
+    assert.match(res.body, /&quot;Como o posthink/);
+  } finally { Object.assign(RUN, antes); }
+});
+
+test('cliente incompleto também não ganha o Gerar de cada linha', async () => {
+  const original = CLIENTE.adapter_config;
+  CLIENTE.adapter_config = {};
+  try {
+    const res = await renderiza('../api/ui/home.mjs');
+    assert.doesNotMatch(res.body, /Gerar só este artigo/, 'ofereceu produção por linha sem destino');
+  } finally { CLIENTE.adapter_config = original; }
 });

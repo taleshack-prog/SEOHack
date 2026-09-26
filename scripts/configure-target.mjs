@@ -1,73 +1,115 @@
 #!/usr/bin/env node
-// Configura o destino de publicação do cliente (clients.adapter_config).
+// Configura o destino de publicação de um cliente (clients.adapter_config).
 //
 // Feito como script e não como UPDATE colado no terminal porque o config
-// carrega HTML dentro de JSON dentro de SQL — três níveis de escape, e um
-// aspas errada só apareceria como página quebrada semanas depois.
+// carrega HTML dentro de JSON dentro de SQL — três níveis de escape, e uma
+// aspa errada só apareceria como página quebrada semanas depois. E feito como
+// script, e não como tela, porque o token de acesso ao repositório não pode
+// passar por formulário: segredo em formulário acaba em histórico de sessão,
+// em log de proxy e em captura de tela.
 //
-// Uso: node --env-file=.env scripts/configure-target.mjs
+// Duas correções em relação à primeira versão, ambas descobertas doendo:
+//
+//  1. O destino era fixo no código (Hack Tech Farm). Num motor multi-cliente
+//     isso significa que rodar o script para outro domínio escrevia no cliente
+//     errado — e o painel chegou a sugerir exatamente isso.
+//  2. Ele gravava o adapter_config INTEIRO. Como os produtos vivem na mesma
+//     coluna, desde que a tela /produtos existe, rodar o configure apagaria a
+//     lista de produtos que alguém acabou de cadastrar pelo painel.
+//
+// Uso: npm run configure                      (usa CLIENT_DOMAIN)
+//      npm run configure posthink.com.br
+//      npm run configure posthink.com.br --repo usuario/outro-repo
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { sql, getClient } from '../lib/db.mjs';
+import { healthCheck } from '../lib/adapters/index.mjs';
 
-const shellPath = fileURLToPath(new URL('../seeds/site-shell.json', import.meta.url));
-const shell = JSON.parse(await readFile(shellPath, 'utf8'));
-delete shell._comment;
+const caminho = (p) => fileURLToPath(new URL(`../${p}`, import.meta.url));
+const lerJson = async (p) => JSON.parse(await readFile(caminho(p), 'utf8'));
 
-const token = process.env.GITHUB_TOKEN;
-if (!token) {
-  console.error('GITHUB_TOKEN ausente no .env.');
-  console.error('Crie um fine-grained token com acesso só ao repositório do site');
-  console.error('e permissão Contents: Read and write.');
-  process.exit(1);
+const args = process.argv.slice(2).filter((a) => a !== '--');
+const opcoes = new Map();
+const soltos = [];
+for (let i = 0; i < args.length; i++) {
+  if (args[i].startsWith('--')) { opcoes.set(args[i].slice(2), args[++i]); } else soltos.push(args[i]);
+}
+const opcao = (nome) => opcoes.get(nome);
+const dominio = soltos[0] || process.env.CLIENT_DOMAIN;
+
+const morrer = (...linhas) => { console.error(linhas.join('\n')); process.exit(1); };
+
+if (!dominio) morrer('Diga de quem é o destino: npm run configure <domínio>');
+
+const alvos = await lerJson('seeds/targets.json');
+const alvo = alvos[dominio];
+if (!alvo) {
+  morrer(`✗ "${dominio}" não está em seeds/targets.json.`,
+    `  Domínios descritos lá: ${Object.keys(alvos).filter((k) => !k.startsWith('_')).join(', ')}`,
+    '  Acrescente um bloco para ele antes de rodar.');
 }
 
+const repo = opcao('repo') || process.env.GITHUB_REPO || alvo.repo;
+if (alvo.adapter === 'github' && !repo) {
+  morrer(`✗ Falta o repositório de ${dominio}.`,
+    '  Preencha "repo" no bloco dele em seeds/targets.json, ou passe --repo usuario/repositorio.');
+}
+
+const nomeDoToken = alvo.tokenEnv || 'GITHUB_TOKEN';
+const token = process.env[nomeDoToken];
+if (alvo.adapter === 'github' && !token) {
+  morrer(`✗ ${nomeDoToken} ausente no .env.`,
+    '  Crie um fine-grained token com acesso só ao repositório do site',
+    '  e permissão Contents: Read and write.');
+}
+
+const shell = alvo.shellFile ? await lerJson(alvo.shellFile) : {};
+delete shell._comment;
+
+const client = await getClient(dominio);
+
+// O que NÃO se toca: os produtos, que são editados pela tela /produtos.
+const anterior = client.adapter_config || {};
+const produtos = Array.isArray(anterior.products) ? anterior.products : [];
+
 const config = {
-  // --- destino ---
-  token,
-  repo: process.env.GITHUB_REPO || 'taleshack-prog/Hack-Tech-Farm-site',
-  branch: 'main',
-
-  // Site serve da raiz, sem build: o HTML entra direto em blog/.
-  contentDir: 'blog',
-  sitemapPath: 'sitemap-blog.xml',
-
-  // O Markdown fonte NÃO vai para o repositório. Com cleanUrls ligado ele
-  // viraria URL pública e competiria com o artigo. O texto vive no Neon.
-  keepSource: false,
-
-  // --- identidade do site ---
-  baseUrl: 'https://hacktechfarm.com.br',
-  blogBasePath: '/blog',
-  cssHref: '/css/styles.css',
-  authorUrl: 'https://hacktechfarm.com.br/sobre',
-
-  // --- links exigidos pelo PRD §20 ---
-  // Só o conjunto comercial. /parceiros e /roadmap existem, mas linkar para
-  // eles não cumpre a intenção da regra, que é ligar conteúdo técnico a algo
-  // vendável. Caminhos sem .html porque o site usa cleanUrls.
-  productPaths: ['/produtos', '/posthink', '/neuroart', '/asphalt', '/galeria', '/contato'],
-
-  shell,
+  ...(alvo.adapter === 'github' ? { token, repo, branch: alvo.branch || 'main' } : {}),
+  contentDir: alvo.contentDir,
+  sitemapPath: alvo.sitemapPath,
+  keepSource: Boolean(alvo.keepSource),
+  baseUrl: alvo.baseUrl,
+  blogBasePath: alvo.blogBasePath || '/blog',
+  ...(alvo.cssHref ? { cssHref: alvo.cssHref } : {}),
+  ...(alvo.authorUrl ? { authorUrl: alvo.authorUrl } : {}),
+  ...(alvo.logoUrl ? { logoUrl: alvo.logoUrl } : {}),
+  ...(Array.isArray(alvo.productPaths) ? { productPaths: alvo.productPaths } : {}),
+  ...(Object.keys(shell).length ? { shell } : {}),
+  products: produtos,
 };
 
-const client = await getClient();
+// Confere ANTES de gravar que o token enxerga o repositório e a branch. Sem
+// isto, um repo com nome errado só aparece no fim de uma produção — depois de
+// o texto estar escrito e pago.
+try {
+  const ok = await healthCheck({ publish_adapter: alvo.adapter, adapter_config: config });
+  console.log(`✓ destino acessível: ${JSON.stringify(ok)}`);
+} catch (err) {
+  morrer(`✗ Nada foi gravado. O destino não respondeu: ${err.message}`,
+    '  Confira o repositório, a branch e a permissão do token (Contents: Read and write).');
+}
+
 await sql`
   UPDATE clients
-     SET publish_adapter = 'github',
+     SET publish_adapter = ${alvo.adapter},
          adapter_config = ${JSON.stringify(config)}::jsonb,
-         adapter_verified_at = NULL
+         adapter_verified_at = NOW()
    WHERE id = ${client.id}`;
 
-const [c] = await sql`SELECT publish_adapter, adapter_config FROM clients WHERE id = ${client.id}`;
-const cfg = c.adapter_config;
-console.log('✓ Destino configurado\n');
-console.log(`  adapter      ${c.publish_adapter}`);
-console.log(`  repositório  ${cfg.repo} (${cfg.branch})`);
-console.log(`  pasta        ${cfg.contentDir}/`);
-console.log(`  URL base     ${cfg.baseUrl}${cfg.blogBasePath}/<slug>`);
-console.log(`  CSS          ${cfg.cssHref}`);
-console.log(`  shell        ${Object.keys(cfg.shell).join(', ')}`);
-console.log(`  produtos     ${cfg.productPaths.join(' ')}`);
-console.log(`  token        ${'*'.repeat(12)}${cfg.token.slice(-4)}`);
-console.log('\nRode "npm run doctor" para validar o acesso ao repositório.');
+console.log(`\n✓ Destino configurado — ${client.name} (${client.domain})\n`);
+console.log(`  adapter      ${alvo.adapter}`);
+if (repo) console.log(`  repositório  ${repo} (${config.branch})`);
+console.log(`  pasta        ${config.contentDir}/`);
+console.log(`  URL base     ${config.baseUrl}${config.blogBasePath}/<slug>`);
+console.log(`  sitemap      ${config.baseUrl}/${String(config.sitemapPath).replace(/^public\//, '')}`);
+console.log(`  moldura      ${Object.keys(shell).join(', ') || 'nenhuma (página sem cabeçalho do site)'}`);
+console.log(`  produtos     ${produtos.length ? produtos.map((p) => p.name).join(', ') : 'nenhum — cadastre em /produtos'}`);

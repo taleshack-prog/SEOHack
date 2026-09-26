@@ -14,12 +14,26 @@ import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
 import { generateBatch } from '../../lib/content-engine.mjs';
+import { pendenciasDoCliente } from '../../lib/prontidao.mjs';
 
 export default comErro(requireAuth(async (req, res) => {
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }
 
   const { topic_id } = await readBody(req);
   const client = await clienteAtual(req);
+
+  // Pré-voo antes de gastar. O que já se sabe de graça — cliente sem destino de
+  // publicação, cliente sem produto cadastrado — reprova o lote inteiro depois
+  // de o texto estar escrito e pago. Aconteceu com o primeiro cliente novo:
+  // "product_links (0 links de produto, mínimo 1)", falha garantida desde antes
+  // da primeira palavra, cobrada como se fosse acidente.
+  const pendencias = pendenciasDoCliente(client);
+  if (pendencias.length) {
+    res.statusCode = 302;
+    res.setHeader('Location', `/?aviso=cliente-incompleto&falta=${
+      encodeURIComponent(pendencias.map((p) => p.chave).join(','))}`);
+    return res.end();
+  }
 
   // Sem tópico aprovado não há o que gerar — e dizer "produção iniciada, leva
   // de 2 a 5 minutos" nesse caso faz o operador esperar por algo que terminou

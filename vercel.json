@@ -94,6 +94,10 @@
       "destination": "/api/ui/topicos"
     },
     {
+      "source": "/produtos",
+      "destination": "/api/ui/produtos"
+    },
+    {
       "source": "/clientes",
       "destination": "/api/ui/clientes"
     }

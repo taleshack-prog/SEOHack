@@ -20,7 +20,10 @@ const CLIENTE = {
   id: '00000000-0000-0000-0000-000000000001',
   name: 'Exemplo', domain: 'exemplo.com.br',
   publish_adapter: 'github',
-  adapter_config: { productPaths: ['/produtos'], blogBasePath: '/blog', baseUrl: 'https://exemplo.com.br' },
+  // repo e token presentes: cliente completo. O pré-voo de lib/prontidao.mjs
+  // bloqueia a produção sem eles, e as telas mostram o que falta.
+  adapter_config: { repo: 'exemplo/site', token: 'ghp_x',
+                    productPaths: ['/produtos'], blogBasePath: '/blog', baseUrl: 'https://exemplo.com.br' },
   monthly_budget_usd: '50.00',
 };
 
@@ -365,4 +368,83 @@ test('domínio inválido não cadastra cliente', async () => {
 test('a barra do painel mostra de qual cliente é a tela', async () => {
   const res = await renderiza('../api/ui/home.mjs');
   assert.match(res.body, /SEOHack <span>· Exemplo<\/span>/);
+});
+
+// --- produtos e pré-voo ---
+//
+// Um lote foi disparado para um cliente sem destino e sem produto: o texto foi
+// escrito, pago, e recusado por "product_links (0 links de produto, mínimo 1)".
+
+test('a tela de produtos renderiza com o produto do cliente', async () => {
+  const res = await renderiza('../api/ui/produtos.mjs');
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /name="about"/);
+  assert.match(res.body, /name="clusters"/);
+});
+
+test('produto sem descrição volta 422 sem gravar', async () => {
+  const mod = await import('../api/ui/produtos.mjs');
+  const res = fakeRes();
+  await mod.default(reqPost({ name: 'Posthink', path: '/p', about: 'curto', clusters: '' }), res);
+  assert.equal(res.statusCode, 422);
+  assert.match(res.body, /descrição/);
+});
+
+test('produto válido é gravado e volta para a tela', async () => {
+  const mod = await import('../api/ui/produtos.mjs');
+  const res = fakeRes();
+  await mod.default(reqPost({ name: 'Posthink', path: 'https://posthink.com.br',
+                              about: 'agente que escreve e agenda posts no LinkedIn',
+                              clusters: 'engajamento-no-linkedin' }), res);
+  assert.equal(res.statusCode, 302);
+  assert.match(res.headers.location, /\/produtos\?ok=1/);
+});
+
+test('a tela de produtos aparece no menu do painel', async () => {
+  const res = await renderiza('../api/ui/home.mjs');
+  assert.match(res.body, /href="\/produtos"/);
+});
+
+test('regressão: o pré-voo vem antes do waitUntil, não depois de pagar', async () => {
+  const src = await (await import('node:fs/promises'))
+    .readFile((await import('node:url')).fileURLToPath(new URL('../api/ui/generate.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /pendenciasDoCliente/, 'não confere se o cliente pode produzir');
+  assert.ok(src.indexOf('pendenciasDoCliente') < src.indexOf('waitUntil('),
+    'confere as pendências depois de disparar a produção');
+  assert.match(src, /aviso=cliente-incompleto/);
+});
+
+test('cliente incompleto não ganha botão de gerar, e sim a lista do que falta', async () => {
+  const original = CLIENTE.adapter_config;
+  CLIENTE.adapter_config = {};          // nem destino nem produto
+  try {
+    const res = await renderiza('../api/ui/home.mjs');
+    assert.equal(res.statusCode, 200);
+    assert.doesNotMatch(res.body, /Gerar próximos artigos/, 'ofereceu produção impossível');
+    assert.match(res.body, /antes de produzir/);
+    assert.match(res.body, /href="\/produtos"/);
+  } finally { CLIENTE.adapter_config = original; }
+});
+
+test('a fila oferece marcar pilar em quem ainda não é', async () => {
+  const res = await renderiza('../api/ui/home.mjs');
+  assert.match(res.body, /value="pilar"/);
+});
+
+test('marcar pilar não multiplica o score duas vezes', async () => {
+  const src = await (await import('node:fs/promises'))
+    .readFile((await import('node:url')).fileURLToPath(new URL('../api/ui/topic.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /NOT is_pillar/, 'clicar duas vezes multiplicaria o score de novo');
+  assert.match(src, /PILLAR_MULTIPLIER/, 'usa um número solto em vez da constante do score');
+});
+
+test('artigo escrito e não publicado aparece no painel', async () => {
+  // Cinco artigos de genética ficaram invisíveis por não ter status published;
+  // o status 'ready' tem o mesmo buraco quando a publicação falha.
+  const antes = { ...ARTIGO };
+  Object.assign(ARTIGO, { status: 'ready', first_published_at: null });
+  try {
+    const res = await renderiza('../api/ui/home.mjs');
+    assert.match(res.body, /Escrito e fora do ar/);
+  } finally { Object.assign(ARTIGO, antes); }
 });

@@ -6,6 +6,7 @@ import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 import { parseNotes } from '../../lib/notes.mjs';
 import { findUnsourcedStats } from '../../lib/validate.mjs';
+import { pendenciasDoCliente } from '../../lib/prontidao.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 
 const plural = (n, s, p) => `${n} ${n === 1 ? s : p}`;
@@ -49,6 +50,18 @@ export default comErro(requireAuth(async (req, res) => {
      WHERE client_id = ${client.id} AND status = 'published'
      ORDER BY first_published_at DESC`;
 
+  // Artigo escrito, pago e em lugar nenhum.
+  //
+  // Status 'ready' é o do texto que passou na validação e ainda não foi ao
+  // destino — porque a publicação falhou, ou porque o cliente nem tem destino
+  // configurado. Nenhuma tela olhava para ele: o dinheiro saía, o texto
+  // existia, e o painel dizia "nenhum artigo publicado ainda".
+  const prontos = await sql`
+    SELECT slug, title, cluster, is_pillar, word_count, created_at
+      FROM articles
+     WHERE client_id = ${client.id} AND status = 'ready'
+     ORDER BY created_at ASC`;
+
   // Estado da produção, lido de pipeline_runs — não há estado em memória.
   const [run] = await sql`
     SELECT status, items_processed, items_succeeded, error_message, started_at, finished_at
@@ -76,6 +89,8 @@ export default comErro(requireAuth(async (req, res) => {
 
   const precisaSync = pilaresDessincronizados.filter((p) => p.satelites > 0);
 
+  const pendencias = pendenciasDoCliente(client);
+
   let flash = null;
   if (req.query?.iniciado) flash = { text: 'Produção iniciada. Leva de 2 a 5 minutos — atualize a página para acompanhar.' };
   else if (req.query?.aviso === 'ja-rodando') flash = { text: 'Já existe uma produção em andamento.', bad: true };
@@ -88,6 +103,9 @@ export default comErro(requireAuth(async (req, res) => {
   else if (req.query?.destravados) flash = {
     text: `${req.query.destravados} tópico(s) de volta à fila. O texto que estava sendo escrito quando a produção`
         + ' morreu foi descartado; eles serão reescritos do zero.' };
+  else if (req.query?.aviso === 'cliente-incompleto') flash = {
+    text: 'Nada foi gerado, e nada foi cobrado: falta configuração neste cliente. '
+        + 'O que está faltando está logo abaixo.', bad: true };
   else if (req.query?.aviso === 'topico-indisponivel') flash = {
     text: 'Este tópico não está mais disponível — pode ter sido publicado ou descartado.', bad: true };
   else if (req.query?.ok) flash = { text: `Publicado. ${esc(req.query.ok)} está no ar.` };
@@ -133,7 +151,19 @@ export default comErro(requireAuth(async (req, res) => {
           Esta página se atualiza sozinha.</span>
         </div>
       </div>`
-    : topics.some((t) => t.status === 'approved')
+    : pendencias.length
+      // Botão que não pode dar certo não deve existir. Este cliente ainda não
+      // tem como receber o artigo, ou não tem produto para o artigo linkar —
+      // gerar agora é pagar por um texto que a validação vai recusar.
+      ? `<div class="empty" style="text-align:left">
+          <strong>${pendencias.length === 1 ? 'Falta uma coisa antes de produzir'
+            : `Faltam ${pendencias.length} coisas antes de produzir`}</strong>
+          ${pendencias.map((d) => `<p style="margin:12px 0 0"><strong style="font-size:15px">${esc(d.titulo)}.</strong>
+            ${esc(d.detalhe)}
+            ${d.link ? `<br><a href="${esc(d.link)}">Resolver agora →</a>`
+              : `<br><code>${esc(d.comando)}</code>`}</p>`).join('')}
+        </div>`
+      : topics.some((t) => t.status === 'approved')
       ? `<form method="POST" action="/api/ui/generate" class="produce">
           <button type="submit">Gerar próximos artigos</button>
           <span class="note">Pega os primeiros da fila abaixo, pilares primeiro.
@@ -199,6 +229,12 @@ ${topics.length ? `<table>
         <input type="hidden" name="topic_id" value="${esc(t.id)}">
         <button class="ghost mini" title="Gerar só este artigo">Gerar</button>
       </form>`}
+      ${t.is_pillar ? '' : `
+      <form method="POST" action="/api/ui/topic">
+        <input type="hidden" name="topic_id" value="${esc(t.id)}">
+        <button name="acao" value="pilar" class="ghost mini"
+                title="Marcar como página pilar do cluster: vai para a frente da fila e os satélites linkam para ela">Pilar</button>
+      </form>`}
       ${t.status === 'pending' ? `
       <form method="POST" action="/api/ui/topic">
         <input type="hidden" name="topic_id" value="${esc(t.id)}">
@@ -207,6 +243,18 @@ ${topics.length ? `<table>
     </div></td>
   </tr>`).join('')}</tbody></table>`
     : '<div class="empty"><strong>Fila vazia</strong><a href="/topicos">Escrever novos tópicos</a></div>'}
+
+${prontos.length ? `<h2 class="sec">Escrito e fora do ar</h2>
+<table>
+  <thead><tr><th>Artigo</th><th>Cluster</th><th>Escrito em</th><th></th></tr></thead>
+  <tbody>${prontos.map((a) => `<tr>
+    <td>${esc(a.title)} ${a.is_pillar ? '<span class="pill pillar">pilar</span>' : ''}</td>
+    <td class="num">${esc(a.cluster || '—')}</td>
+    <td class="num">${new Date(a.created_at).toLocaleDateString('pt-BR')}</td>
+    <td class="num"><a href="/review/${esc(a.slug)}" class="pill">Abrir</a></td>
+  </tr>`).join('')}</tbody></table>
+<p class="note">Estes passaram na validação e foram pagos, mas não chegaram ao site — a
+publicação falhou ou o destino não estava configurado. Abrir permite revisar e publicar de novo.</p>` : ''}
 
 <h2 class="sec">No ar</h2>
 ${noAr.length ? `<table>

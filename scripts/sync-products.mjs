@@ -5,45 +5,42 @@
 // repositório, shell) fica intacto — por isso NÃO usa configure-target, que
 // regrava tudo e exige o token no .env.
 //
-// Uso: npm run sync-products              (lê seeds/products.json)
+// A tela /produtos do painel faz o mesmo, por cliente e sem terminal. Este
+// script fica para carga grande e para reaplicar um arquivo versionado.
+//
+// Uso: npm run sync-products                          (CLIENT_DOMAIN, seeds/products.json)
 //      npm run sync-products outro.json
+//      npm run sync-products outro.json genbreed.com.br
+//      npm run sync-products -- --cliente genbreed.com.br
 import { readFile } from 'node:fs/promises';
 import { sql, getClient } from '../lib/db.mjs';
+import { limparProdutos, validarProdutos } from '../lib/produtos.mjs';
 
-const file = process.argv[2] || 'seeds/products.json';
+// O motor é multi-cliente; este script escrevia sempre no CLIENT_DOMAIN, então
+// só a Hack Tech Farm conseguia ter produto — e cliente sem produto tem todo
+// artigo recusado pela regra product_links depois de o texto ser pago.
+const args = process.argv.slice(2).filter((a) => a !== '--');
+const iCliente = args.findIndex((a) => a === '--cliente');
+const dominio = iCliente >= 0 ? args[iCliente + 1]
+  : args.find((a) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(a) && !a.endsWith('.json'));
+const file = args.find((a) => a.endsWith('.json')) || 'seeds/products.json';
 const { products = [] } = JSON.parse(await readFile(file, 'utf8'));
 
-const erros = [];
-products.forEach((p, i) => {
-  const onde = `produto ${i + 1} (${p.name || 'sem nome'})`;
-  if (!p.name) erros.push(`${onde}: falta "name"`);
-  if (!p.about || p.about.length < 20) erros.push(`${onde}: "about" vazio ou curto demais — é o que o modelo lê`);
-  if (!p.path || !(/^\/[a-z0-9-/]*$/i.test(p.path) || /^https:\/\/[^\s]+$/i.test(p.path))) {
-    erros.push(`${onde}: "path" precisa ser /caminho ou https://dominio`);
-  }
-  if (p.clusters && !Array.isArray(p.clusters)) erros.push(`${onde}: "clusters" precisa ser lista, ex.: ["genetica"]`);
-});
-const donos = new Map();
-for (const p of products) for (const c of (Array.isArray(p.clusters) ? p.clusters : [])) {
-  if (donos.has(c)) erros.push(`cluster "${c}" ligado a dois produtos (${donos.get(c)} e ${p.name})`);
-  donos.set(c, p.name);
-}
+const limpos = limparProdutos(products);
+const erros = validarProdutos(limpos);
 if (erros.length) {
   console.error('✗ Nada foi gravado:\n  ' + erros.join('\n  '));
   process.exit(1);
 }
 
-const limpos = products.map(({ path, name, about, clusters = [], voice }) =>
-  ({ path: path.replace(/\/+$/, '') || '/', name, about, clusters, ...(voice ? { voice } : {}) }));
-
-const client = await getClient();
+const client = await getClient(dominio || process.env.CLIENT_DOMAIN);
 await sql`
   UPDATE clients
      SET adapter_config = jsonb_set(COALESCE(adapter_config, '{}'::jsonb), '{products}',
                                     ${JSON.stringify(limpos)}::jsonb)
    WHERE id = ${client.id}`;
 
-console.log(`✓ ${limpos.length} produto(s) gravado(s):`);
+console.log(`✓ ${limpos.length} produto(s) gravado(s) em ${client.name} (${client.domain}):`);
 for (const p of limpos) {
   const c = (p.clusters.length ? `  → clusters: ${p.clusters.join(', ')}` : '')
     + (p.voice ? ' (voz própria)' : '');

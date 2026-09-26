@@ -1,6 +1,5 @@
 {
   "_leia": "Destino de publicação de cada cliente, por domínio. O token NÃO mora aqui: vem do .env, pelo nome em 'tokenEnv' (padrão GITHUB_TOKEN). Aplique com: npm run configure <domínio>. O script preserva a chave 'products' do adapter_config, que é editada pela tela /produtos do painel.",
-
   "hacktechfarm.com.br": {
     "adapter": "github",
     "repo": "taleshack-prog/Hack-Tech-Farm-site",
@@ -12,10 +11,16 @@
     "blogBasePath": "/blog",
     "cssHref": "/css/styles.css",
     "authorUrl": "https://hacktechfarm.com.br/sobre",
-    "productPaths": ["/produtos", "/posthink", "/neuroart", "/asphalt", "/galeria", "/contato"],
+    "productPaths": [
+      "/produtos",
+      "/posthink",
+      "/neuroart",
+      "/asphalt",
+      "/galeria",
+      "/contato"
+    ],
     "shellFile": "seeds/site-shell.json"
   },
-
   "posthink.com.br": {
     "_nota": "Monorepo: backend Python na raiz, site Vite+React em frontend/, que é a raiz do projeto na Vercel. O Vite copia frontend/public/ inteiro para o build, então frontend/public/blog/<slug>.html vira posthink.com.br/blog/<slug>.html. A URL sem .html vem do cleanUrls no frontend/vercel.json.",
     "adapter": "github",
@@ -28,9 +33,9 @@
     "blogBasePath": "/blog",
     "authorUrl": "https://posthink.com.br",
     "productPaths": [],
-    "shellFile": "seeds/shell-posthink.json"
+    "shellFile": "seeds/shell-posthink.json",
+    "tokenEnv": "GITHUB_TOKEN_POSTHINK"
   },
-
   "genbreed.com.br": {
     "_nota": "Ainda sem destino decidido. Preencha repo e contentDir antes de rodar o configure para este domínio.",
     "adapter": "github",

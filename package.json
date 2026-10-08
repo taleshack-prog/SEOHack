@@ -19,7 +19,8 @@
     "backfill-usage": "node --env-file=.env scripts/backfill-usage.mjs",
     "sync-products": "node --env-file=.env scripts/sync-products.mjs",
     "topicos": "node --env-file=.env scripts/list-topics.mjs",
-    "corrigir-publicados": "node --env-file=.env scripts/fix-published.mjs"
+    "corrigir-publicados": "node --env-file=.env scripts/fix-published.mjs",
+    "buscar": "node --env-file=.env scripts/buscar.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

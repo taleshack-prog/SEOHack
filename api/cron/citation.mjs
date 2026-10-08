@@ -12,32 +12,13 @@
 import { cronHandler } from '../../lib/cron-auth.mjs';
 import { sql, getClient } from '../../lib/db.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
+import { responder, posicaoDoDominio, temChave } from '../../lib/perplexity.mjs';
 
 const MAX_QUERIES = 10;
 
-async function askPerplexity(question) {
-  const res = await fetch('https://api.perplexity.ai/chat/completions', {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'sonar',
-      messages: [{ role: 'user', content: question }],
-    }),
-  });
-  if (!res.ok) throw new Error(`Perplexity ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = await res.json();
-  return {
-    answer: data.choices?.[0]?.message?.content || '',
-    citations: data.citations || data.search_results?.map((s) => s.url) || [],
-  };
-}
-
 export default cronHandler(async () => {
   const client = await getClient();
-  if (!process.env.PERPLEXITY_API_KEY) {
+  if (!temChave()) {
     return { skipped: true, reason: 'PERPLEXITY_API_KEY ausente' };
   }
 
@@ -55,17 +36,20 @@ export default cronHandler(async () => {
     for (const t of targets) {
       const question = t.topic || t.title;
       try {
-        const { answer, citations } = await askPerplexity(question);
-        const rank = citations.findIndex((u) => u.includes(client.domain));
-        const wasCited = rank !== -1;
+        const { answer, fontes } = await responder(question);
+        // Comparação por host, não por substring: `includes(domain)` dava
+        // positivo para "naoposthink.com.br" e para qualquer URL que tivesse o
+        // domínio no caminho ou na query — inflando a única métrica de GEO.
+        const rank = posicaoDoDominio(fontes, client.domain);
+        const wasCited = rank > 0;
 
         await sql`
           INSERT INTO ai_citations (client_id, article_id, engine, method, query,
                                     cited, source_rank, citation_snippet, raw_sources)
           VALUES (${client.id}, ${t.id}, 'perplexity', 'api', ${question},
-                  ${wasCited}, ${wasCited ? rank + 1 : null},
+                  ${wasCited}, ${wasCited ? rank : null},
                   ${wasCited ? answer.slice(0, 500) : null},
-                  ${JSON.stringify(citations)})`;
+                  ${JSON.stringify(fontes)})`;
 
         checked++;
         if (wasCited) cited++;

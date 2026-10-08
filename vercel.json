@@ -78,6 +78,10 @@
       "destination": "/api/ui/review?slug=:slug"
     },
     {
+      "source": "/consultas",
+      "destination": "/api/ui/consultas"
+    },
+    {
       "source": "/desempenho",
       "destination": "/api/ui/metrics"
     },

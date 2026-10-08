@@ -7,7 +7,7 @@
 import { cronHandler } from '../../lib/cron-auth.mjs';
 import { sql, listClients, withTenant } from '../../lib/db.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
-import { defaultWindow, byPage } from '../../lib/search-console.mjs';
+import { defaultWindow, janelaLonga, byPage, byPageQuery } from '../../lib/search-console.mjs';
 
 export default cronHandler(async () => {
   // Um cron para todos os sites. Cada cliente tem a própria propriedade na
@@ -74,6 +74,65 @@ async function coletar(client) {
       }
     });
 
-    return { processed: blogRows.length, succeeded: saved, window };
+    // Consulta é outra coleta, com outro ritmo e outro custo.
+    const consultas = await coletarConsultas(client);
+
+    return { processed: blogRows.length, succeeded: saved, window, consultas };
   });
+}
+
+/**
+ * page x query, semanal.
+ *
+ * Por que semanal e não diário: agrupar por página E consulta é a chamada mais
+ * cara em quota da Search Console (C6), e a resposta muda devagar. E por que
+ * existe: a tabela gsc_query_metrics está no schema desde a migração 001 e
+ * nunca recebeu uma linha — a única evidência de demanda real do projeto estava
+ * sendo jogada fora a cada coleta.
+ *
+ * O intervalo é medido pelo dado, não pelo dia da semana: se o cron falhar numa
+ * semana, a próxima execução coleta. Um cron que só roda "aos domingos" perde o
+ * domingo em que a função morreu e ninguém percebe.
+ */
+async function coletarConsultas(client, { dias = 28, minimoDias = 7 } = {}) {
+  const [ultima] = await sql`
+    SELECT MAX(period_start) AS quando FROM gsc_query_metrics WHERE client_id = ${client.id}`;
+
+  if (ultima?.quando && (Date.now() - new Date(ultima.quando)) < minimoDias * 86400000) {
+    return { pulado: 'coletado há menos de uma semana' };
+  }
+
+  const janela = janelaLonga(dias);
+  let linhas;
+  try {
+    linhas = await byPageQuery(janela, '/blog/', 5000, { property: client.gsc_property });
+  } catch (err) {
+    // Falhar aqui não pode derrubar a coleta por página, que já foi gravada.
+    console.error(`[tracking] consultas de ${client.domain}: ${err.message}`);
+    return { erro: err.message };
+  }
+
+  if (!linhas.length) return { gravadas: 0, janela, nota: 'nenhuma consulta na janela' };
+
+  let gravadas = 0;
+  await withTenant(client.id, async (c) => {
+    for (const r of linhas) {
+      await c.query(
+        `INSERT INTO gsc_query_metrics (client_id, page_url, query, period_start, period_end,
+                                        position, impressions, clicks, ctr)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (client_id, page_url, query, period_start)
+         DO UPDATE SET period_end = EXCLUDED.period_end,
+                       position = EXCLUDED.position,
+                       impressions = EXCLUDED.impressions,
+                       clicks = EXCLUDED.clicks,
+                       ctr = EXCLUDED.ctr,
+                       collected_at = NOW()`,
+        [client.id, r.pageUrl, r.query.slice(0, 500), janela.startDate, janela.endDate,
+         r.position, r.impressions, r.clicks, r.ctr]);
+      gravadas++;
+    }
+  });
+
+  return { gravadas, janela };
 }

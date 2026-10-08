@@ -41,6 +41,16 @@ const ARTIGO = {
 // Mutável: cada teste decide se há tópico travado em produção.
 let PRESOS = [];
 
+// Consultas vindas da Search Console, como o cron semanal as grava.
+let CONSULTAS = [
+  { query: 'como fazer quadro de punnett', page_url: 'https://exemplo.com.br/blog/punnett',
+    impressions: 40, clicks: 2, position: 4.2,
+    period_start: '2026-09-10', period_end: '2026-10-05' },
+  { query: 'coeficiente de endogamia calculo', page_url: 'https://exemplo.com.br/blog/wright',
+    impressions: 12, clicks: 0, position: 14.0,
+    period_start: '2026-09-10', period_end: '2026-10-05' },
+];
+
 // Última execução do pipeline. Vazio = nunca rodou.
 const RUN = { status: null, items_processed: 0, items_succeeded: 0, error_message: null,
               started_at: new Date('2026-09-26T16:00:00Z'), finished_at: null };
@@ -69,6 +79,7 @@ function fakeSql(strings) {
     { user_agent: 'Googlebot', dia: '2026-08-23', hits: 20 }]);
   if (/FROM ai_crawler_hits/i.test(q)) return Promise.resolve([{ user_agent: 'ClaudeBot', hits: 41, ultima: '2026-08-23' }]);
   if (/FROM seo_metrics/i.test(q)) return Promise.resolve([]);
+  if (/FROM gsc_query_metrics/i.test(q)) return Promise.resolve(CONSULTAS);
   if (/FROM leads/i.test(q)) return Promise.resolve([{
     id: 'l1', nome: 'Heitor Hack', email: 'alguem@exemplo.com', assunto: 'Dúvida sobre um produto',
     mensagem: 'gostaria de entender como funciona o GenBreed?', origem: 'https://hacktechfarm.com.br',
@@ -558,4 +569,54 @@ test('arquivar não derruba artigo já publicado', async () => {
   await mod.default(reqPost({ slug: ARTIGO.slug, acao: 'arquivar' }), res);
   assert.equal(res.statusCode, 302);
   assert.match(res.headers.location, /\/review\//, 'arquivou um artigo que está no ar');
+});
+
+// --- consultas reais ---
+//
+// 28 artigos, 16 no Top 10, 124 impressões. O que faltava não era posição, era
+// demanda — e a única evidência dela estava sendo descartada a cada coleta.
+test('a tela de consultas separa o que traz gente do que vale escrever', async () => {
+  const res = await renderiza('../api/ui/consultas.mjs');
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /Vale escrever/);
+  assert.match(res.body, /coeficiente de endogamia calculo/);
+  assert.match(res.body, /Já trazem gente/);
+  assert.match(res.body, /Virar tópico/);
+});
+
+test('consulta que já está no top 10 não é oferecida para virar tópico', async () => {
+  const res = await renderiza('../api/ui/consultas.mjs');
+  const vale = res.body.slice(res.body.indexOf('Vale escrever'), res.body.indexOf('Já trazem gente'));
+  assert.doesNotMatch(vale, /como fazer quadro de punnett/, 'ofereceu reescrever o que já ranqueia');
+});
+
+test('sem coleta, a tela explica em vez de mostrar tabela vazia', async () => {
+  const antes = CONSULTAS;
+  CONSULTAS = [];
+  try {
+    const res = await renderiza('../api/ui/consultas.mjs');
+    assert.match(res.body, /Sem dado de consulta ainda/);
+    assert.match(res.body, /uma vez por semana/);
+  } finally { CONSULTAS = antes; }
+});
+
+test('virar tópico grava com origem gsc e as impressões como volume', async () => {
+  const mod = await import('../api/ui/consultas.mjs');
+  const res = fakeRes();
+  await mod.default(reqPost({ query: 'coeficiente de endogamia calculo',
+                              impressoes: '12', posicao: '14' }), res);
+  assert.equal(res.statusCode, 302);
+  assert.match(res.headers.location, /fila=/);
+});
+
+test('consulta vazia não vira tópico', async () => {
+  const mod = await import('../api/ui/consultas.mjs');
+  const res = fakeRes();
+  await mod.default(reqPost({ query: ' ', impressoes: '3' }), res);
+  assert.equal(res.statusCode, 422);
+});
+
+test('a tela de consultas está no menu', async () => {
+  const res = await renderiza('../api/ui/home.mjs');
+  assert.match(res.body, /href="\/consultas"/);
 });

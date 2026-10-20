@@ -14,6 +14,7 @@ import { clienteAtual } from '../../lib/tenant.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 import { AGENTES_BUSCA, readCrawlerStatus } from '../../lib/crawlers.mjs';
 import { graficoLinha, graficoBarras, distribuicaoDeRanking } from '../../lib/charts.mjs';
+import { estadoDaMedicao } from '../../lib/medicao.mjs';
 
 const dinheiro = (v) => `US$ ${Number(v || 0).toFixed(2)}`;
 const dias = (d) => Math.floor((Date.now() - new Date(d)) / 86400000);
@@ -46,6 +47,16 @@ export default comErro(requireAuth(async (req, res) => {
       FROM ai_crawler_hits
      WHERE client_id = ${client.id} AND hit_date > CURRENT_DATE - 30
      GROUP BY user_agent ORDER BY hits DESC`) || [];
+
+  // A última execução do Citation Engine. Sem isto, "0 citações" significa duas
+  // coisas opostas na mesma tela: medimos e não achamos, ou não medimos. Em
+  // 20/10/2026 foram dez falhas de 403 exibidas como zero.
+  const [ultimaCitacao] = await sql`
+    SELECT status, started_at, finished_at, items_processed, items_succeeded, error_message
+      FROM pipeline_runs
+     WHERE client_id = ${client.id} AND stage = 'citation'
+     ORDER BY started_at DESC LIMIT 1`;
+  const medicao = estadoDaMedicao(ultimaCitacao || null);
 
   const temGsc = artigos.some((a) => a.metric_date);
   const primeiro = artigos[0]?.first_published_at;
@@ -96,7 +107,7 @@ export default comErro(requireAuth(async (req, res) => {
     <td class="num">${a.impressions ?? '—'}</td>
     <td class="num">${a.clicks ?? '—'}</td>
     <td class="num">${a.ctr_pct ? `${a.ctr_pct}%` : '—'}</td>
-    <td class="num">${a.citation_count || 0}</td>
+    <td class="num">${medicao.ruim ? '—' : (a.citation_count || 0)}</td>
     <td class="num">${dinheiro(a.custo)}</td>
   </tr>`).join('');
 
@@ -110,6 +121,10 @@ export default comErro(requireAuth(async (req, res) => {
   }
   if (!process.env.PERPLEXITY_API_KEY) {
     pendencias.push('Sem chave da Perplexity: citações em IA não são verificadas.');
+  } else if (medicao.ruim) {
+    // Falha de medição tem que aparecer aqui, não só no log da Vercel.
+    pendencias.push(`Citações em IA: ${medicao.texto}.`
+      + (medicao.motivo ? ` Motivo: ${String(medicao.motivo).slice(0, 200)}` : ''));
   }
   if (!crawlers.agentes) {
     pendencias.push('Nenhuma visita de crawler de IA registrada — o Log Drain da Vercel não está enviando dados.');
@@ -125,7 +140,9 @@ Custo total até agora: <strong>${dinheiro(totalCusto.total)}</strong>${
 ${temGsc ? `<div class="cards">
   <div class="stat"><span class="n">${somaImp}</span><span class="l">impressões</span></div>
   <div class="stat"><span class="n">${somaCliques}</span><span class="l">cliques</span></div>
-  <div class="stat"><span class="n">${citacoes}</span><span class="l">citações em IA</span></div>
+  <div class="stat"><span class="n">${medicao.ruim ? '—' : citacoes}</span>
+    <span class="l">citações em IA</span>
+    <span class="sub-line"${medicao.ruim ? ' style="color:var(--proof)"' : ''}>${esc(medicao.texto)}</span></div>
   <div class="stat"><span class="n">${crawlers.agentes}</span><span class="l">crawlers de IA ativos</span></div>
 </div>` : ''}
 

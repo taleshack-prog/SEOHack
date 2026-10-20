@@ -9,6 +9,17 @@
 // Aqui: API oficial da Perplexity, que devolve as fontes citadas de forma
 // estruturada e legítima. O campo `method` separa o que veio de API do que foi
 // verificado à mão, para as duas séries não se misturarem no dashboard.
+//
+// 20/10/2026 — as dez medições falharam em bloco com 403 (a Sonar Chat
+// Completions foi desligada em 27/09). O `catch` daqui registrava a falha no
+// console e seguia em frente, então o lote terminou com "0 citações" e o painel
+// mostrou zero — indistinguível de uma medição legítima que não achou nada. Só
+// o log da Vercel contava a verdade. Duas correções:
+//
+//   1. A falha sobe no resultado do estágio, e portanto em pipeline_runs.
+//      `succeeded: 0` com `processed: 10` passa a significar o que significa.
+//   2. Erro de migração interrompe o lote. Se o endpoint mudou de lugar, as
+//      outras nove vão falhar igual — insistir só gasta tempo de função.
 import { cronHandler } from '../../lib/cron-auth.mjs';
 import { sql, getClient } from '../../lib/db.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
@@ -32,7 +43,11 @@ export default cronHandler(async () => {
        ORDER BY a.first_published_at DESC
        LIMIT ${MAX_QUERIES}`;
 
-    let checked = 0, cited = 0;
+    let checked = 0;
+    let cited = 0;
+    const falhas = [];
+    let interrompido = null;
+
     for (const t of targets) {
       const question = t.topic || t.title;
       try {
@@ -55,10 +70,25 @@ export default cronHandler(async () => {
         if (wasCited) cited++;
       } catch (err) {
         console.error(`[citation] "${question}": ${err.message}`);
+        falhas.push(err.message);
+
+        if (err.migracao) {
+          interrompido = 'a API da Perplexity mudou de endereço — o cliente precisa ser '
+            + `atualizado antes de medir de novo (${err.message.slice(0, 160)})`;
+          break;
+        }
       }
       await new Promise((r) => setTimeout(r, 1500)); // educado com a API
     }
 
-    return { processed: targets.length, succeeded: checked, cited };
+    // O estágio só é "sem erro" quando todas as perguntas foram medidas. Zero
+    // citações em dez medições é resultado; zero medições em dez tentativas é
+    // defeito, e os dois não podem chegar à tela do mesmo jeito.
+    const error = interrompido
+      || (falhas.length
+        ? `${falhas.length} de ${targets.length} falharam: ${falhas[0].slice(0, 180)}`
+        : null);
+
+    return { processed: targets.length, succeeded: checked, cited, ...(error ? { error } : {}) };
   });
 });

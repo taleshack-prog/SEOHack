@@ -5,18 +5,22 @@
 // demanda. Esta é a única lista de demanda REAL que o projeto tem — buscas que
 // de fato aconteceram, não estimativa de ferramenta.
 //
-// O botão "Virar tópico" fecha o ciclo: a consulta entra na fila já com o
-// número de impressões no lugar do volume, que é exatamente o que o
-// opportunityScore espera receber. Tópico nascido daqui tem evidência; tópico
-// digitado à mão tem palpite.
+// 20/10/2026, primeira coleta: a versão anterior oferecia "Virar tópico" para
+// toda consulta fora do Top 10. Entre elas estava "depressão endogâmica", 12
+// impressões na posição 10,1, que já tem artigo dedicado. Clicar teria criado
+// um segundo artigo disputando a mesma busca com o primeiro. A coleta só olha
+// /blog/, então toda consulta daqui já caiu num artigo: o que decide a ação não
+// é se existe página, é se a página é sobre aquilo.
 //
-// GET  /consultas          → o que trouxe gente, e o que está perto
+// GET  /consultas          → o que escrever, o que melhorar, o que já funciona
 // POST /api/ui/consultas   → manda uma consulta para a fila de tópicos
 import { requireAuth, readBody } from '../../lib/auth.mjs';
 import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
-import { agruparPorConsulta, estadoDaConsulta, valemArtigo, resumo } from '../../lib/consultas.mjs';
+import {
+  agruparPorConsulta, estadoDaConsulta, aMelhorar, paginasSobrecarregadas, resumo, slugDaUrl,
+} from '../../lib/consultas.mjs';
 import { opportunityScore } from '../../lib/score.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 
@@ -27,14 +31,29 @@ const CSS = `
 .pill.quase{border-color:#8A6D1F;color:#8A6D1F}
 .pill.longe{border-color:var(--muted)}
 form.inline{display:inline}
+.canibal{border:1px solid var(--rule);border-left:3px solid var(--proof);background:#fff;
+  padding:16px 18px;margin-bottom:12px}
+.canibal h3{font-family:var(--mono);font-size:12px;color:var(--ink);margin:0 0 4px;word-break:break-all}
+.canibal ul{margin:10px 0 0;padding-left:18px;font-size:14px;color:var(--muted)}
+.canibal li{margin-bottom:3px}
+.canibal b{color:var(--ink);font-weight:500}
 `;
 
 const pct = (v) => `${(Number(v || 0) * 100).toFixed(2)}%`;
 const pos = (v) => (v == null ? '—' : Number(v).toFixed(1));
 
+// O driver devolve DATE como objeto Date. `String(d).slice(0,10)` virava
+// "Sun Sep 20" na tela. Pelo ISO não há deslocamento de fuso: a coluna é uma
+// data, não um instante.
+const dataBr = (v) => {
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toISOString().slice(0, 10).split('-').reverse().join('/');
+};
+
 const ROTULO = { traz: 'traz', quase: 'página 2', longe: 'longe' };
 
-function linha(c, { comBotao = true } = {}) {
+function linha(c, acao) {
   const estado = estadoDaConsulta(c);
   return `<tr>
   <td class="q">${esc(c.query)}
@@ -44,23 +63,29 @@ function linha(c, { comBotao = true } = {}) {
   <td class="num">${c.clicks}</td>
   <td class="num">${pct(c.ctr)}</td>
   <td class="num">${pos(c.position)} <span class="pill ${estado}">${ROTULO[estado]}</span></td>
-  <td class="num">${comBotao ? `<form method="POST" action="/api/ui/consultas" class="inline">
-    <input type="hidden" name="query" value="${esc(c.query)}">
-    <input type="hidden" name="impressoes" value="${c.impressions}">
-    <input type="hidden" name="posicao" value="${c.position ?? ''}">
-    <button class="ghost mini" title="Entra na fila de tópicos com estas impressões no lugar do volume">Virar tópico</button>
-  </form>` : ''}</td>
+  <td class="num">${acao ? acao(c) : ''}</td>
 </tr>`;
 }
 
-const tabela = (linhas, opts) => `<table>
+const tabela = (linhas, acao) => `<table>
   <thead><tr><th>Consulta</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>Posição</th><th></th></tr></thead>
-  <tbody>${linhas.map((c) => linha(c, opts)).join('')}</tbody></table>`;
+  <tbody>${linhas.map((c) => linha(c, acao)).join('')}</tbody></table>`;
+
+const botaoTopico = (c) => `<form method="POST" action="/api/ui/consultas" class="inline">
+  <input type="hidden" name="query" value="${esc(c.query)}">
+  <input type="hidden" name="impressoes" value="${c.impressions}">
+  <input type="hidden" name="posicao" value="${c.position ?? ''}">
+  <button class="ghost mini" title="Entra na fila de tópicos com estas impressões no lugar do volume">Virar tópico</button>
+</form>`;
+
+const linkArtigo = (c) => `<a href="/review/${esc(slugDaUrl(c.pagina))}" class="pill">Melhorar artigo</a>`;
 
 function render({ consultas, jaNaFila, cliente, janela, flash = null }) {
   const r = resumo(consultas);
-  const oportunidades = valemArtigo(consultas).filter((c) => !jaNaFila.has(c.query.toLowerCase()));
+  const { escrever, melhorar } = aMelhorar(consultas);
+  const novas = escrever.filter((c) => !jaNaFila.has(c.query.toLowerCase()));
   const trazem = consultas.filter((c) => estadoDaConsulta(c) === 'traz');
+  const sobrecarregadas = paginasSobrecarregadas(consultas);
 
   return page({
     title: 'Consultas',
@@ -71,27 +96,46 @@ function render({ consultas, jaNaFila, cliente, janela, flash = null }) {
 <h1 class="lede">O que as pessoas <em>digitaram</em>.</h1>
 <p class="sub">${janela
       ? `Janela de ${esc(janela.inicio)} a ${esc(janela.fim)}, direto da Search Console.
-         Não é estimativa de ferramenta: são buscas que aconteceram.`
+         Não é estimativa de ferramenta: são buscas que aconteceram. O total aqui é menor que o
+         do desempenho porque o Google omite consulta rara dos relatórios, por privacidade.`
       : 'Ainda não há coleta de consultas para este cliente.'}</p>
 
 ${consultas.length ? `<div class="cards">
   <div class="stat"><span class="n">${r.consultas}</span><span class="l">consultas</span></div>
-  <div class="stat"><span class="n">${r.impressoes}</span><span class="l">impressões</span></div>
+  <div class="stat"><span class="n">${r.impressoes}</span><span class="l">impressões atribuídas</span></div>
   <div class="stat"><span class="n">${r.cliques}</span><span class="l">cliques</span></div>
   <div class="stat"><span class="n">${r.quase + r.longe}</span><span class="l">fora do top 10</span></div>
 </div>
 
-<h2 class="sec">Vale escrever — ${oportunidades.length}</h2>
-${oportunidades.length
-      ? `<p class="sub" style="margin-bottom:14px">Buscas em que o site aparece mas não responde bem.
-         São as únicas da lista com demanda provada. Virar tópico leva a consulta para a fila com
-         as impressões no lugar do volume de busca — que é o número que a pontuação usa.</p>
-         ${tabela(oportunidades)}`
-      : `<div class="empty"><strong>Nada fora do top 10 com repetição</strong>
-         Ou tudo que aparece já está bem posicionado, ou a janela ainda tem pouca busca.</div>`}
+${sobrecarregadas.length ? `<h2 class="sec">Uma página, muitas buscas — ${sobrecarregadas.length}</h2>
+<p class="sub" style="margin-bottom:14px">Uma página que o Google escolheu para várias perguntas
+diferentes ganha para uma e afunda para as outras. Não se conserta escrevendo mais: ou a página se
+divide, ou uma delas assume a busca e a outra para de disputá-la.</p>
+${sobrecarregadas.map((p) => `<div class="canibal">
+  <h3>${esc(p.pagina)}</h3>
+  <ul>${p.consultas.map((c) => `<li><b>${esc(c.query)}</b> — posição ${pos(c.position)},
+    ${c.impressions} ${c.impressions === 1 ? 'impressão' : 'impressões'}</li>`).join('')}</ul>
+  <p style="margin:12px 0 0"><a href="/review/${esc(slugDaUrl(p.pagina))}">Abrir o artigo →</a></p>
+</div>`).join('')}` : ''}
+
+<h2 class="sec">Vale escrever — ${novas.length}</h2>
+${novas.length
+      ? `<p class="sub" style="margin-bottom:14px">Buscas com demanda em que o site aparece por falta
+         de opção: a página que o Google escolheu não é sobre isso. Aqui um artigo novo acrescenta,
+         não canibaliza. Virar tópico leva a consulta para a fila com as impressões no lugar do
+         volume de busca — que é o número que a pontuação usa.</p>
+         ${tabela(novas, botaoTopico)}`
+      : `<div class="empty"><strong>Nenhuma lacuna nesta janela</strong>
+         Toda busca fora do top 10 já tem artigo dedicado. O caminho é melhorar o que existe.</div>`}
+
+${melhorar.length ? `<h2 class="sec">Vale melhorar — ${melhorar.length}</h2>
+<p class="sub" style="margin-bottom:14px">Estas já têm artigo próprio, e ele está mal posicionado.
+Escrever outro criaria duas páginas disputando a mesma busca — foi para isso que o botão de virar
+tópico sumiu daqui.</p>
+${tabela(melhorar, linkArtigo)}` : ''}
 
 <h2 class="sec">Já trazem gente — ${trazem.length}</h2>
-${trazem.length ? tabela(trazem, { comBotao: false })
+${trazem.length ? tabela(trazem, null)
         : '<p class="note">Nenhuma consulta no top 10 nesta janela.</p>'}`
       : `<div class="empty"><strong>Sem dado de consulta ainda</strong>
 A coleta por consulta roda uma vez por semana, junto do cron de desempenho (todo dia às 20h UTC,
@@ -117,7 +161,7 @@ async function estado(client) {
     jaNaFila: new Set(fila.map((t) => String(t.topic).toLowerCase())),
     cliente: client.name,
     janela: linhas.length
-      ? { inicio: String(linhas[0].period_start).slice(0, 10), fim: String(linhas[0].period_end).slice(0, 10) }
+      ? { inicio: dataBr(linhas[0].period_start), fim: dataBr(linhas[0].period_end) }
       : null,
   };
 }

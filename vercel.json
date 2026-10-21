@@ -58,6 +58,10 @@
     },
     "api/contato.mjs": {
       "maxDuration": 15
+    },
+    "api/ui/melhorar.mjs": {
+      "maxDuration": 300,
+      "includeFiles": "prompts/**"
     }
   },
   "rewrites": [

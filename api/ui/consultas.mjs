@@ -78,7 +78,14 @@ const botaoTopico = (c) => `<form method="POST" action="/api/ui/consultas" class
   <button class="ghost mini" title="Entra na fila de tópicos com estas impressões no lugar do volume">Virar tópico</button>
 </form>`;
 
-const linkArtigo = (c) => `<a href="/review/${esc(slugDaUrl(c.pagina))}" class="pill">Melhorar artigo</a>`;
+// Botão, não link. A versão anterior mandava o operador para o editor — a tela
+// diagnosticava e passava o trabalho adiante. Agora o mesmo diagnóstico vira a
+// reescrita: o motor mira no termo, valida contra o texto antigo e republica.
+const botaoMelhorar = (c) => `<form method="POST" action="/api/ui/melhorar" class="inline">
+  <input type="hidden" name="slug" value="${esc(slugDaUrl(c.pagina))}">
+  <button class="ghost mini" title="Reescreve mirando neste termo e republica no mesmo endereço">Melhorar</button>
+</form>
+<a href="/review/${esc(slugDaUrl(c.pagina))}" class="pill">Abrir</a>`;
 
 function render({ consultas, jaNaFila, cliente, janela, flash = null }) {
   const r = resumo(consultas);
@@ -115,7 +122,12 @@ ${sobrecarregadas.map((p) => `<div class="canibal">
   <h3>${esc(p.pagina)}</h3>
   <ul>${p.consultas.map((c) => `<li><b>${esc(c.query)}</b> — posição ${pos(c.position)},
     ${c.impressions} ${c.impressions === 1 ? 'impressão' : 'impressões'}</li>`).join('')}</ul>
-  <p style="margin:12px 0 0"><a href="/review/${esc(slugDaUrl(p.pagina))}">Abrir o artigo →</a></p>
+  <p style="margin:12px 0 0" class="produce">
+    <form method="POST" action="/api/ui/melhorar" class="inline">
+      <input type="hidden" name="slug" value="${esc(slugDaUrl(p.pagina))}">
+      <button class="ghost mini">Melhorar mirando em "${esc(p.consultas.find((c) => c.position > 10)?.query || p.consultas[0].query)}"</button>
+    </form>
+    <a href="/review/${esc(slugDaUrl(p.pagina))}" class="pill">Abrir o artigo</a></p>
 </div>`).join('')}` : ''}
 
 <h2 class="sec">Vale escrever — ${novas.length}</h2>
@@ -132,7 +144,7 @@ ${melhorar.length ? `<h2 class="sec">Vale melhorar — ${melhorar.length}</h2>
 <p class="sub" style="margin-bottom:14px">Estas já têm artigo próprio, e ele está mal posicionado.
 Escrever outro criaria duas páginas disputando a mesma busca — foi para isso que o botão de virar
 tópico sumiu daqui.</p>
-${tabela(melhorar, linkArtigo)}` : ''}
+${tabela(melhorar, botaoMelhorar)}` : ''}
 
 <h2 class="sec">Já trazem gente — ${trazem.length}</h2>
 ${trazem.length ? tabela(trazem, null)
@@ -166,10 +178,21 @@ async function estado(client) {
   };
 }
 
+function flashDaUrl(q = {}) {
+  if (q.melhorando) {
+    return { text: `Reescrevendo "${q.melhorando}". Leva de um a três minutos — `
+      + 'o resultado aparece na fila e no desempenho. Nada foi publicado ainda.' };
+  }
+  if (q.erro) return { text: String(q.erro), bad: true };
+  return null;
+}
+
 export default comErro(requireAuth(async (req, res) => {
   const client = await clienteAtual(req);
 
-  if (req.method !== 'POST') return send(res, render(await estado(client)));
+  if (req.method !== 'POST') {
+    return send(res, render({ ...(await estado(client)), flash: flashDaUrl(req.query) }));
+  }
 
   const body = await readBody(req);
   const topico = String(body.query || '').trim();

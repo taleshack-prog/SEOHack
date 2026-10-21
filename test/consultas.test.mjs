@@ -178,5 +178,7 @@ test('a data da janela não sai como "Sun Sep 20"', async () => {
   assert.match(src, /dataBr/);
   assert.doesNotMatch(src, /String\(linhas\[0\]\.period_start\)\.slice/,
     'voltou a tratar Date como texto');
-  assert.match(src, /linkArtigo/, 'a tela perdeu o caminho para melhorar o artigo');
+  // A ação de melhorar deixou de ser link para o editor (linkArtigo) e passou a
+  // ser POST em /api/ui/melhorar; quem garante isso é test/rewrite.test.mjs.
+  assert.match(src, /botaoMelhorar/, 'a tela perdeu o caminho para melhorar o artigo');
 });

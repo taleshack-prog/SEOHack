@@ -12,6 +12,7 @@ import { cronHandler } from '../../lib/cron-auth.mjs';
 import { sql, getClient } from '../../lib/db.mjs';
 import { runStage } from '../../lib/pipeline.mjs';
 import { assertBudget } from '../../lib/budget.mjs';
+import { reescreverArtigo } from '../../lib/rewrite.mjs';
 
 const MAX_REWRITES_PER_RUN = 2;
 
@@ -66,16 +67,33 @@ export default cronHandler(async () => {
       SELECT slug, title FROM articles
        WHERE client_id = ${client.id} AND rewrite_count >= 3 AND status = 'published'`;
 
-    // TODO Sprint 4: gerar a reescrita incremental via LLM comparando com o
-    // conteúdo que ocupa as primeiras posições (Content Gap, PRD §27) e enviar
-    // pela publishBatch. A infraestrutura de registro já está pronta abaixo.
+    // O Sprint 4 chegou. lib/rewrite.mjs faz a reescrita incremental: mira na
+    // busca que a página já recebe e está fora do Top 10, valida contra o texto
+    // antigo (só barra o que a reescrita introduziu) e republica no mesmo
+    // endereço. Cada falha é isolada — uma página que não tem alvo não impede
+    // a seguinte.
+    const resultados = [];
+    for (const c of candidates) {
+      try {
+        resultados.push(await reescreverArtigo(client, c.slug, { motivo: 'content_gap' }));
+      } catch (err) {
+        console.error(`[optimization] ${c.slug}: ${err.message}`);
+        resultados.push({ publicado: false, slug: c.slug, motivo: err.message });
+      }
+    }
+
+    const publicados = resultados.filter((r) => r.publicado);
+    const recusados = resultados.filter((r) => !r.publicado);
+
     return {
       processed: candidates.length,
-      succeeded: 0,
+      succeeded: publicados.length,
       evaluatedPending: evaluated,
-      candidates: candidates.map((c) => ({ slug: c.slug, position: c.position, rewrites: c.rewrite_count })),
+      reescritos: publicados.map((r) => ({ slug: r.slug, alvo: r.alvo, mudancas: r.mudancas })),
       needsHumanDecision: exhausted.map((e) => e.slug),
-      note: 'reescrita automática entra no Sprint 4; este ciclo apenas avalia e lista',
+      ...(recusados.length
+        ? { error: recusados.map((r) => `"${r.slug}": ${r.motivo}`).join(' | ') }
+        : {}),
     };
   });
 });

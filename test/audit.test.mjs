@@ -2,7 +2,7 @@
 // uma resposta real do site. Estes testes servem um site falso pelo fetch.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { auditarSite, normalizarDominio, agentesBloqueados, lerSitemap, lerPagina } from '../lib/audit.mjs';
+import { auditarSite, normalizarDominio, agentesBloqueados, regrasIgnoradas, lerSitemap, lerPagina } from '../lib/audit.mjs';
 
 test('normaliza o que a pessoa digita', () => {
   assert.equal(normalizarDominio('https://www.Exemplo.com.br/blog/x').host, 'exemplo.com.br');
@@ -156,4 +156,69 @@ test('a tela pública renderiza o formulário e é indexável', async () => {
   assert.match(res.body, /name="site"/);
   assert.match(res.body, /content="index,follow"/, 'a isca precisa ser indexável');
   assert.doesNotMatch(res.body, /Sair|Fila<\/a>/, 'não pode expor o menu do operador');
+});
+
+// --- linhas que o Google descarta em silêncio -------------------------------
+//
+// Vídeo do Gary Illyes, 22/10/2026: o parser reconhece quatro regras e
+// "silently discard the line it doesn't understand". O diagnóstico dizia
+// "robots.txt ok, 14 linhas" sem olhar se as linhas fazem algo.
+test('regra escrita de outra forma é apontada como sem efeito', () => {
+  const { descartadas } = regrasIgnoradas(`User-agent: *
+Disallow: /admin
+Noindex: /rascunhos
+Don't crawl: /interno`);
+  const campos = descartadas.map((d) => d.campo);
+  assert.deepEqual(campos, ['noindex', "don't crawl"]);
+  assert.equal(descartadas[0].lidaPor, null);
+});
+
+test('crawl-delay não é erro — é de outro buscador', () => {
+  const { descartadas } = regrasIgnoradas('User-agent: *\nCrawl-delay: 10\nDisallow: /tmp');
+  assert.equal(descartadas.length, 1);
+  assert.equal(descartadas[0].lidaPor, 'Bing');
+});
+
+test('comentário e linha vazia não contam como regra descartada', () => {
+  const { descartadas } = regrasIgnoradas('# nosso robots\n\nUser-agent: *\nAllow: /\n\n# fim');
+  assert.deepEqual(descartadas, []);
+});
+
+test('sitemap é uma das quatro reconhecidas', () => {
+  const { descartadas } = regrasIgnoradas('Sitemap: https://ex.com/sitemap.xml');
+  assert.deepEqual(descartadas, []);
+});
+
+test('caminho com acento ou emoji é sinalizado para percent-encoding', () => {
+  const { naoCodificadas } = regrasIgnoradas('User-agent: *\nDisallow: /relatórios\nDisallow: /ok');
+  assert.deepEqual(naoCodificadas, ['/relatórios']);
+});
+
+test('robots.txt correto não gera o aviso', () => {
+  const r = regrasIgnoradas('User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://ex.com/s.xml');
+  assert.deepEqual(r.descartadas, []);
+  assert.deepEqual(r.naoCodificadas, []);
+});
+
+test('o que só vale em outro buscador não vira cheque, vira detalhe', async () => {
+  const resposta = (url) => {
+    if (url.endsWith('/robots.txt')) {
+      return { ok: true, status: 200, texto: 'User-agent: *\nAllow: /\nCrawl-delay: 10' };
+    }
+    if (/teste-404/.test(url)) return { ok: false, status: 404, texto: '' };
+    return { ok: true, status: 200, url,
+             texto: '<html><head><title>Ex</title><link rel="canonical" href="https://ex.com/">'
+               + '</head><body><h1>Ex</h1></body></html>' };
+  };
+  const fetchImpl = async (url) => {
+    const r = resposta(String(url));
+    return { ok: r.ok, status: r.status, url: r.url || String(url),
+             text: async () => r.texto, headers: new Map() };
+  };
+
+  const { checks } = await auditarSite('ex.com', { fetchImpl });
+  const robots = checks.find((c) => c.id === 'robots');
+  assert.match(robots.detalhe, /vale no Bing/);
+  assert.equal(checks.find((c) => c.id === 'robots_ignorado'), undefined,
+    'um cheque aprovado a mais mexeria na nota de quem usa crawl-delay');
 });

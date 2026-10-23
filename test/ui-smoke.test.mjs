@@ -620,3 +620,56 @@ test('a tela de consultas está no menu', async () => {
   const res = await renderiza('../api/ui/home.mjs');
   assert.match(res.body, /href="\/consultas"/);
 });
+
+// --- o botão tem de prometer o que o motor faz -------------------------------
+//
+// 23/10/2026, primeira tela com dado real: três linhas de "Vale melhorar"
+// apontavam para a mesma página do MRR e o bloco de canibalização dizia
+// "Melhorar mirando em 'arr mrr'" (posição 18, 1 impressão). O motor escolhe
+// por impressão, não por posição — miraria em "o que é mrr" (2 impressões).
+// O rótulo prometia um termo e a reescrita faria outro.
+test('o botão nomeia o termo que o motor realmente vai usar', async () => {
+  const antes = CONSULTAS;
+  const pagina = 'https://exemplo.com.br/blog/arr-ou-mrr-qual-metrica-usar-e-quando';
+  CONSULTAS = [
+    { query: 'arr mrr', page_url: pagina, impressions: 1, clicks: 0, position: 18.0,
+      period_start: '2026-09-22', period_end: '2026-10-19' },
+    { query: 'o que é mrr', page_url: pagina, impressions: 2, clicks: 0, position: 36.0,
+      period_start: '2026-09-22', period_end: '2026-10-19' },
+    { query: 'mrr o que é', page_url: pagina, impressions: 2, clicks: 0, position: 87.0,
+      period_start: '2026-09-22', period_end: '2026-10-19' },
+  ];
+  try {
+    const { escolherAlvo } = await import('../lib/consultas.mjs');
+    const alvo = escolherAlvo(CONSULTAS.map((c) => ({ ...c, pagina: c.page_url })));
+    assert.equal(alvo.query, 'o que é mrr', 'a regra do motor mudou sem a tela saber');
+
+    const res = await renderiza('../api/ui/consultas.mjs');
+    assert.match(res.body, /Melhorar mirando em "o que é mrr"/);
+    assert.doesNotMatch(res.body, /mirando em "arr mrr"/,
+      'o botão prometeu o termo melhor posicionado, não o de mais impressões');
+  } finally { CONSULTAS = antes; }
+});
+
+test('linha cuja página mira em outro termo avisa na própria linha', async () => {
+  const antes = CONSULTAS;
+  const pagina = 'https://exemplo.com.br/blog/arr-ou-mrr-qual-metrica-usar-e-quando';
+  CONSULTAS = [
+    { query: 'mrr o que é', page_url: pagina, impressions: 2, clicks: 0, position: 87.0,
+      period_start: '2026-09-22', period_end: '2026-10-19' },
+    { query: 'o que é mrr', page_url: pagina, impressions: 5, clicks: 0, position: 36.0,
+      period_start: '2026-09-22', period_end: '2026-10-19' },
+  ];
+  try {
+    const res = await renderiza('../api/ui/consultas.mjs');
+    const melhorar = res.body.slice(res.body.indexOf('Vale melhorar'));
+    assert.match(melhorar, /mira em "o que é mrr"/,
+      'clicar em "mrr o que é" reescreveria mirando noutro termo sem avisar');
+  } finally { CONSULTAS = antes; }
+});
+
+test('quando o alvo é o termo da própria linha, não há aviso redundante', async () => {
+  const res = await renderiza('../api/ui/consultas.mjs');
+  const melhorar = res.body.slice(res.body.indexOf('Vale melhorar'));
+  assert.doesNotMatch(melhorar, /mira em "coeficiente de endogamia calculo"/);
+});

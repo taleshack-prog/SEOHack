@@ -20,6 +20,7 @@ import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 import {
   agruparPorConsulta, estadoDaConsulta, aMelhorar, paginasSobrecarregadas, resumo, slugDaUrl,
+  escolherAlvo,
 } from '../../lib/consultas.mjs';
 import { opportunityScore } from '../../lib/score.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
@@ -31,6 +32,7 @@ const CSS = `
 .pill.quase{border-color:#8A6D1F;color:#8A6D1F}
 .pill.longe{border-color:var(--muted)}
 form.inline{display:inline}
+.mira{display:block;font-size:11px;color:var(--muted);margin-top:4px;font-style:italic}
 .canibal{border:1px solid var(--rule);border-left:3px solid var(--proof);background:#fff;
   padding:16px 18px;margin-bottom:12px}
 .canibal h3{font-family:var(--mono);font-size:12px;color:var(--ink);margin:0 0 4px;word-break:break-all}
@@ -81,11 +83,24 @@ const botaoTopico = (c) => `<form method="POST" action="/api/ui/consultas" class
 // Botão, não link. A versão anterior mandava o operador para o editor — a tela
 // diagnosticava e passava o trabalho adiante. Agora o mesmo diagnóstico vira a
 // reescrita: o motor mira no termo, valida contra o texto antigo e republica.
-const botaoMelhorar = (c) => `<form method="POST" action="/api/ui/melhorar" class="inline">
-  <input type="hidden" name="slug" value="${esc(slugDaUrl(c.pagina))}">
-  <button class="ghost mini" title="Reescreve mirando neste termo e republica no mesmo endereço">Melhorar</button>
+//
+// O alvo vem de escolherAlvo, a mesma função que o motor usa. Antes o rótulo
+// escolhia por posição e o motor por impressão, então o botão prometia um
+// termo e a reescrita mirava em outro — e três linhas da tabela que apontam
+// para a MESMA página prometiam três alvos diferentes.
+const botaoMelhorar = (alvos) => (c) => {
+  const slug = slugDaUrl(c.pagina);
+  const alvo = alvos.get(c.pagina);
+  const outro = alvo && alvo.query !== c.query;
+  return `<form method="POST" action="/api/ui/melhorar" class="inline">
+  <input type="hidden" name="slug" value="${esc(slug)}">
+  <button class="ghost mini" title="${outro
+    ? `Esta página é a mesma de "${esc(alvo.query)}", que tem mais impressões — a reescrita mira naquele termo`
+    : 'Reescreve mirando neste termo e republica no mesmo endereço'}">Melhorar</button>
 </form>
-<a href="/review/${esc(slugDaUrl(c.pagina))}" class="pill">Abrir</a>`;
+<a href="/review/${esc(slug)}" class="pill">Abrir</a>
+${outro ? `<span class="mira">mira em "${esc(alvo.query)}"</span>` : ''}`;
+};
 
 function render({ consultas, jaNaFila, cliente, janela, flash = null }) {
   const r = resumo(consultas);
@@ -93,6 +108,15 @@ function render({ consultas, jaNaFila, cliente, janela, flash = null }) {
   const novas = escrever.filter((c) => !jaNaFila.has(c.query.toLowerCase()));
   const trazem = consultas.filter((c) => estadoDaConsulta(c) === 'traz');
   const sobrecarregadas = paginasSobrecarregadas(consultas);
+
+  // Um alvo por página, não por linha: a reescrita é da página.
+  const porPagina = new Map();
+  for (const c of consultas) {
+    if (!porPagina.has(c.pagina)) porPagina.set(c.pagina, []);
+    porPagina.get(c.pagina).push(c);
+  }
+  const alvos = new Map([...porPagina].map(([pag, lista]) => [pag, escolherAlvo(lista)]));
+  const melhorarNesta = botaoMelhorar(alvos);
 
   return page({
     title: 'Consultas',
@@ -125,7 +149,10 @@ ${sobrecarregadas.map((p) => `<div class="canibal">
   <p style="margin:12px 0 0" class="produce">
     <form method="POST" action="/api/ui/melhorar" class="inline">
       <input type="hidden" name="slug" value="${esc(slugDaUrl(p.pagina))}">
-      <button class="ghost mini">Melhorar mirando em "${esc(p.consultas.find((c) => c.position > 10)?.query || p.consultas[0].query)}"</button>
+      <button class="ghost mini">${(() => {
+        const a = escolherAlvo(p.consultas);
+        return a ? `Melhorar mirando em "${esc(a.query)}"` : 'Melhorar';
+      })()}</button>
     </form>
     <a href="/review/${esc(slugDaUrl(p.pagina))}" class="pill">Abrir o artigo</a></p>
 </div>`).join('')}` : ''}
@@ -144,7 +171,7 @@ ${melhorar.length ? `<h2 class="sec">Vale melhorar — ${melhorar.length}</h2>
 <p class="sub" style="margin-bottom:14px">Estas já têm artigo próprio, e ele está mal posicionado.
 Escrever outro criaria duas páginas disputando a mesma busca — foi para isso que o botão de virar
 tópico sumiu daqui.</p>
-${tabela(melhorar, botaoMelhorar)}` : ''}
+${tabela(melhorar, melhorarNesta)}` : ''}
 
 <h2 class="sec">Já trazem gente — ${trazem.length}</h2>
 ${trazem.length ? tabela(trazem, null)

@@ -317,3 +317,50 @@ test('sha de 40 hex é preservado', async () => {
   const update = gravados.find((g) => /UPDATE articles/.test(g.q));
   assert.ok(update.vals.includes('d3adbeef'.repeat(5)));
 });
+
+// --- a trava de repetição ----------------------------------------------------
+test('reescrita que repete mais que o texto atual não vai ao ar', async () => {
+  reset();
+  const ideia = 'A homozigose de alelos recessivos deletérios aumenta a cada geração '
+    + 'de acasalamento entre parentes dentro da mesma linhagem fechada.';
+  const parafrase = 'O acasalamento entre parentes aumenta, geração após geração, a '
+    + 'homozigose dos alelos recessivos deletérios daquela linhagem fechada.';
+  const outra = 'Criadores acompanham o tamanho médio da ninhada e a mortalidade dos '
+    + 'filhotes para perceber o problema cedo.';
+
+  artigo = { ...ARTIGO, markdown: `## A\n\n${ideia}\n\n${outra}\n\n[produtos](/produtos)\n[o](/blog/outro)` };
+  textoDoModelo = `## A\n\n## Em outras palavras\n\n${ideia}\n\n${parafrase}\n\n${outra}\n\n`
+    + 'palavra '.repeat(300) + '\n\n[produtos](/produtos)\n[o](/blog/outro)';
+
+  const r = await reescreverArtigo(CLIENTE, ARTIGO.slug);
+  assert.equal(r.publicado, false);
+  assert.match(r.motivo, /repete mais que o texto atual/);
+  assert.match(r.motivo, /homozigose/, 'não mostrou qual trecho repetiu');
+  assert.equal(publicacoes.length, 0);
+});
+
+test('repetição que já existia no texto antigo não bloqueia', async () => {
+  reset();
+  const ideia = 'A homozigose de alelos recessivos deletérios aumenta a cada geração '
+    + 'de acasalamento entre parentes dentro da mesma linhagem fechada.';
+  const parafrase = 'O acasalamento entre parentes aumenta, geração após geração, a '
+    + 'homozigose dos alelos recessivos deletérios daquela linhagem fechada.';
+  // Os dois textos repetem igual; o novo só acrescenta conteúdo diferente.
+  artigo = { ...ARTIGO, markdown: `## A\n\n${ideia}\n\n${parafrase}\n\n[p](/produtos)\n[o](/blog/outro)` };
+  textoDoModelo = `## A\n\n## B\n\n${ideia}\n\n${parafrase}\n\n` + 'palavra '.repeat(400)
+    + '\n\n[p](/produtos)\n[o](/blog/outro)';
+
+  const r = await reescreverArtigo(CLIENTE, ARTIGO.slug);
+  assert.equal(r.publicado, true, 'bloqueou por repetição herdada do texto antigo');
+});
+
+test('o prompt manda melhorar a seção existente em vez de criar outra', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(
+    fileURLToPath(new URL('../lib/rewrite.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /procure a que já responde/);
+  assert.match(src, /FAQ que devolve o que o corpo já respondeu/);
+  assert.doesNotMatch(src, /em uma seção dedicada se\n\s*ainda não houver/,
+    'a instrução que produziu a seção repetida continua lá');
+});

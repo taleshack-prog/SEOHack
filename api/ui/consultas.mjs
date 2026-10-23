@@ -55,6 +55,13 @@ const dataBr = (v) => {
 
 const ROTULO = { traz: 'traz', quase: 'página 2', longe: 'longe' };
 
+// improved/neutral/worsened são o que o cron grava em optimization_log.outcome.
+const VEREDITO = {
+  improved: { texto: 'subiu', classe: 'traz' },
+  neutral: { texto: 'sem mudança', classe: 'longe' },
+  worsened: { texto: 'piorou', classe: 'quase' },
+};
+
 function linha(c, acao) {
   const estado = estadoDaConsulta(c);
   return `<tr>
@@ -102,7 +109,7 @@ const botaoMelhorar = (alvos) => (c) => {
 ${outro ? `<span class="mira">mira em "${esc(alvo.query)}"</span>` : ''}`;
 };
 
-function render({ consultas, jaNaFila, cliente, janela, flash = null }) {
+function render({ consultas, reescritas = [], jaNaFila, cliente, janela, flash = null }) {
   const r = resumo(consultas);
   const { escrever, melhorar } = aMelhorar(consultas);
   const novas = escrever.filter((c) => !jaNaFila.has(c.query.toLowerCase()));
@@ -130,6 +137,26 @@ function render({ consultas, jaNaFila, cliente, janela, flash = null }) {
          Não é estimativa de ferramenta: são buscas que aconteceram. O total aqui é menor que o
          do desempenho porque o Google omite consulta rara dos relatórios, por privacidade.`
       : 'Ainda não há coleta de consultas para este cliente.'}</p>
+
+${reescritas.length ? `<h2 class="sec">Reescritas — ${reescritas.length}</h2>
+<p class="sub" style="margin-bottom:14px">O veredito não sai no dia: o cron de otimização volta
+30 dias depois da reescrita, compara a posição de antes com a de agora e grava se melhorou.
+Até lá fica "aguardando medição", que é a resposta honesta.</p>
+<table>
+  <thead><tr><th>Artigo</th><th>O que mudou</th><th class="num">Antes</th>
+    <th class="num">Agora</th><th>Quando</th></tr></thead>
+  <tbody>${reescritas.map((r) => `<tr>
+    <td class="q"><a href="/review/${esc(r.slug)}">${esc(r.title)}</a>
+      ${Number(r.attempt_number) > 1
+        ? `<span class="pill">${r.attempt_number}ª de 3</span>` : ''}</td>
+    <td class="sub" style="font-size:13px">${esc(r.changes_summary || '—')}</td>
+    <td class="num">${pos(r.old_position)}</td>
+    <td class="num">${r.outcome === 'pending' || r.new_position == null
+      ? '<span class="pill">aguardando medição</span>'
+      : `${pos(r.new_position)} <span class="pill ${VEREDITO[r.outcome]?.classe || ''}">${
+          VEREDITO[r.outcome]?.texto || esc(r.outcome)}</span>`}</td>
+    <td class="sub" style="font-size:13px">${dataBr(r.optimized_at)}</td>
+  </tr>`).join('')}</tbody></table>` : ''}
 
 ${consultas.length ? `<div class="cards">
   <div class="stat"><span class="n">${r.consultas}</span><span class="l">consultas</span></div>
@@ -184,7 +211,7 @@ o primeiro resultado aparece na próxima execução.</div>`}`,
 }
 
 async function estado(client) {
-  const [linhas, fila] = await Promise.all([
+  const [linhas, fila, reescritas] = await Promise.all([
     sql`SELECT query, page_url, impressions, clicks, position, period_start, period_end
           FROM gsc_query_metrics
          WHERE client_id = ${client.id}
@@ -193,10 +220,23 @@ async function estado(client) {
     // Consulta que já virou tópico não deve ser oferecida de novo.
     sql`SELECT topic FROM topics WHERE client_id = ${client.id}
          AND status IN ('pending','approved','writing','needs_human','published')`,
+    // O que já foi reescrito. Sem isto, optimization_log era escrito e nunca
+    // lido: o operador clicava em Melhorar e a única prova de que algo
+    // aconteceu era abrir o site.
+    sql`SELECT o.attempt_number, o.trigger_reason, o.old_position, o.old_impressions,
+               o.changes_summary, o.new_position, o.outcome, o.optimized_at,
+               a.slug, a.title
+          FROM optimization_log o
+          JOIN articles a ON a.id = o.article_id
+         WHERE o.client_id = ${client.id}
+           AND o.optimized_at > NOW() - INTERVAL '60 days'
+         ORDER BY o.optimized_at DESC
+         LIMIT 10`,
   ]);
 
   return {
     consultas: agruparPorConsulta(linhas),
+    reescritas,
     jaNaFila: new Set(fila.map((t) => String(t.topic).toLowerCase())),
     cliente: client.name,
     janela: linhas.length
@@ -208,7 +248,8 @@ async function estado(client) {
 function flashDaUrl(q = {}) {
   if (q.melhorando) {
     return { text: `Reescrevendo "${q.melhorando}". Leva de um a três minutos — `
-      + 'o resultado aparece na fila e no desempenho. Nada foi publicado ainda.' };
+      + 'quando terminar, a linha aparece em Reescritas aqui mesmo. '
+      + 'Nada foi publicado ainda.' };
   }
   if (q.erro) return { text: String(q.erro), bad: true };
   return null;

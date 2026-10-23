@@ -51,6 +51,14 @@ let CONSULTAS = [
     period_start: '2026-09-10', period_end: '2026-10-05' },
 ];
 
+// Reescritas já feitas, como optimization_log guarda.
+let REESCRITAS = [
+  { attempt_number: 1, trigger_reason: 'content_gap', old_position: '10.10',
+    old_impressions: 12, changes_summary: 'mirou em "depressão endogâmica" (posição 10.1); +180 palavras; +1 seção',
+    new_position: null, outcome: 'pending', optimized_at: new Date('2026-10-23T19:40:00Z'),
+    slug: 'depressao-endogamica-o-que-a-consanguinidade-faz', title: 'Depressão Endogâmica' },
+];
+
 // Última execução do pipeline. Vazio = nunca rodou.
 const RUN = { status: null, items_processed: 0, items_succeeded: 0, error_message: null,
               started_at: new Date('2026-09-26T16:00:00Z'), finished_at: null };
@@ -80,6 +88,7 @@ function fakeSql(strings) {
   if (/FROM ai_crawler_hits/i.test(q)) return Promise.resolve([{ user_agent: 'ClaudeBot', hits: 41, ultima: '2026-08-23' }]);
   if (/FROM seo_metrics/i.test(q)) return Promise.resolve([]);
   if (/FROM gsc_query_metrics/i.test(q)) return Promise.resolve(CONSULTAS);
+  if (/FROM optimization_log/i.test(q)) return Promise.resolve(REESCRITAS);
   if (/FROM leads/i.test(q)) return Promise.resolve([{
     id: 'l1', nome: 'Heitor Hack', email: 'alguem@exemplo.com', assunto: 'Dúvida sobre um produto',
     mensagem: 'gostaria de entender como funciona o GenBreed?', origem: 'https://hacktechfarm.com.br',
@@ -672,4 +681,54 @@ test('quando o alvo é o termo da própria linha, não há aviso redundante', as
   const res = await renderiza('../api/ui/consultas.mjs');
   const melhorar = res.body.slice(res.body.indexOf('Vale melhorar'));
   assert.doesNotMatch(melhorar, /mira em "coeficiente de endogamia calculo"/);
+});
+
+// --- o resultado da reescrita tem onde aparecer ------------------------------
+//
+// 23/10/2026: a primeira reescrita de verdade rodou e publicou, e o painel não
+// mostrava nada. optimization_log era escrito e nunca lido — a única prova de
+// que algo aconteceu era abrir o site. O aviso ainda mandava olhar "a fila e o
+// desempenho", onde a reescrita não aparece.
+test('a tela mostra as reescritas já feitas', async () => {
+  const res = await renderiza('../api/ui/consultas.mjs');
+  assert.match(res.body, /Reescritas —/);
+  assert.match(res.body, /Depressão Endogâmica/);
+  assert.match(res.body, /\+180 palavras/);
+  assert.match(res.body, /10\.1/, 'não mostrou a posição de antes, que é a referência');
+});
+
+test('sem veredito ainda, diz aguardando medição em vez de inventar número', async () => {
+  const res = await renderiza('../api/ui/consultas.mjs');
+  const bloco = res.body.slice(res.body.indexOf('Reescritas —'), res.body.indexOf('CONSULTAS'));
+  assert.match(bloco, /aguardando medição/);
+  assert.doesNotMatch(bloco, />0\.0</, 'posição nova ainda não medida virou zero');
+});
+
+test('o veredito do cron aparece quando existe', async () => {
+  const antes = REESCRITAS;
+  REESCRITAS = [{ ...antes[0], new_position: '6.40', outcome: 'improved' }];
+  try {
+    const res = await renderiza('../api/ui/consultas.mjs');
+    assert.match(res.body, /6\.4/);
+    assert.match(res.body, /subiu/);
+  } finally { REESCRITAS = antes; }
+});
+
+test('sem reescrita nenhuma, o bloco não aparece', async () => {
+  const antes = REESCRITAS;
+  REESCRITAS = [];
+  try {
+    const res = await renderiza('../api/ui/consultas.mjs');
+    assert.doesNotMatch(res.body, /Reescritas —/);
+  } finally { REESCRITAS = antes; }
+});
+
+test('o aviso de reescrita aponta para onde o resultado realmente aparece', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(
+    fileURLToPath(new URL('../api/ui/consultas.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /aparece em Reescritas aqui mesmo/);
+  assert.doesNotMatch(src, /aparece na fila e no desempenho/,
+    'mandava o operador procurar em tela que não mostra reescrita');
 });

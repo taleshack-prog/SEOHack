@@ -77,3 +77,29 @@ test('o corrigir-publicados continua existindo para o caso dele', async () => {
   const pkg = await ler('package.json');
   assert.ok(pkg.scripts['corrigir-publicados'], 'os dois scripts resolvem problemas diferentes');
 });
+
+// --- cluster vazio: o defeito que o mc1r revelou -----------------------------
+//
+// A tela de consultas inseria tópico sem cluster. O artigo saía publicado com
+// o campo vazio, e cluster vazio desliga em silêncio a regra que obriga o link
+// do produto daquele cluster e a costura de pilar e satélites.
+test('tópico nascido de uma consulta herda o cluster da página que já responde', async () => {
+  const src = await readFile(
+    fileURLToPath(new URL('../api/ui/consultas.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /INSERT INTO topics \(client_id, topic, cluster,/,
+    'voltou a inserir tópico sem cluster');
+  assert.match(src, /SELECT cluster FROM articles/,
+    'o cluster tem de sair da página que serve a busca, não de palpite');
+  assert.match(src, /name="pagina"/, 'o formulário precisa mandar a página');
+  assert.match(src, /COALESCE\(topics\.cluster, EXCLUDED\.cluster\)/,
+    'reenviar a consulta não pode apagar um cluster já corrigido à mão');
+});
+
+test('existe caminho para corrigir quem já foi publicado sem cluster', async () => {
+  const pkg = await ler('package.json');
+  assert.equal(pkg.scripts.cluster, 'node --env-file=.env scripts/cluster.mjs');
+  const src = await readFile(
+    fileURLToPath(new URL('../scripts/cluster.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /UPDATE topics SET cluster/, 'corrigir só o artigo deixa o tópico torto');
+  assert.doesNotMatch(src, /content_updated_at/, 'mudar cluster não é mudar conteúdo');
+});

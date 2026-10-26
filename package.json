@@ -21,6 +21,8 @@
     "topicos": "node --env-file=.env scripts/list-topics.mjs",
     "corrigir-publicados": "node --env-file=.env scripts/fix-published.mjs",
     "rerender": "node --env-file=.env scripts/rerender.mjs",
+    "publicados": "node --env-file=.env scripts/publicados.mjs",
+    "cluster": "node --env-file=.env scripts/cluster.mjs",
     "buscar": "node --env-file=.env scripts/buscar.mjs"
   },
   "dependencies": {

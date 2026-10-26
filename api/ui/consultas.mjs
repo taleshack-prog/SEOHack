@@ -80,10 +80,13 @@ const tabela = (linhas, acao) => `<table>
   <thead><tr><th>Consulta</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>Posição</th><th></th></tr></thead>
   <tbody>${linhas.map((c) => linha(c, acao)).join('')}</tbody></table>`;
 
+// A página que o Google escolheu para a busca vai junto: é dela que sai o
+// cluster do tópico novo. Ver o comentário no POST.
 const botaoTopico = (c) => `<form method="POST" action="/api/ui/consultas" class="inline">
   <input type="hidden" name="query" value="${esc(c.query)}">
   <input type="hidden" name="impressoes" value="${c.impressions}">
   <input type="hidden" name="posicao" value="${c.position ?? ''}">
+  <input type="hidden" name="pagina" value="${esc(c.pagina || '')}">
   <button class="ghost mini" title="Entra na fila de tópicos com estas impressões no lugar do volume">Virar tópico</button>
 </form>`;
 
@@ -272,17 +275,35 @@ export default comErro(requireAuth(async (req, res) => {
   const impressoes = Number(body.impressoes) || 0;
   const posicao = Number(body.posicao) || 100;
 
+  // 25/10/2026: "como funciona o gene mc1r" nasceu aqui e foi publicado com
+  // cluster vazio. Cluster vazio desliga em silêncio duas coisas — a regra que
+  // obriga o link do produto daquele cluster e a costura de pilar e satélites.
+  // O artigo linkou o GenBreed por sorte, porque o contexto do prompt cita o
+  // produto, não porque alguma regra exigiu.
+  //
+  // O cluster não precisa ser adivinhado: a busca já cai numa página, e essa
+  // página tem cluster. Quem responde "gene mc1r" hoje é um artigo de genética,
+  // então o tópico nasce em genetica. Se a página não tiver cluster, fica nulo
+  // mesmo — melhor vazio do que errado.
+  const slugDaPagina = body.pagina ? slugDaUrl(body.pagina) : null;
+  const [paginaAtual] = slugDaPagina
+    ? await sql`SELECT cluster FROM articles
+                 WHERE client_id = ${client.id} AND slug = ${slugDaPagina}`
+    : [];
+  const cluster = paginaAtual?.cluster || null;
+
   // source 'gsc' e não 'manual': a origem é o que distingue tópico com
   // evidência de tópico com palpite, e o CHECK da migração 001 já previa isto.
   await sql`
-    INSERT INTO topics (client_id, topic, source, keyword_type, search_volume,
+    INSERT INTO topics (client_id, topic, cluster, source, keyword_type, search_volume,
                         opportunity_score, status, approved_at)
-    VALUES (${client.id}, ${topico}, 'gsc', 'informational', ${impressoes},
+    VALUES (${client.id}, ${topico}, ${cluster}, 'gsc', 'informational', ${impressoes},
             ${opportunityScore({ impressions: impressoes, position: posicao, difficulty: 50 })},
             'approved', NOW())
     ON CONFLICT (client_id, topic_norm) DO UPDATE
       SET search_volume = EXCLUDED.search_volume,
           opportunity_score = EXCLUDED.opportunity_score,
+          cluster = COALESCE(topics.cluster, EXCLUDED.cluster),
           source = 'gsc', status = 'approved', status_reason = NULL
       WHERE topics.status IN ('pending','approved')`;
 

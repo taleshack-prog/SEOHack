@@ -20,6 +20,7 @@
     "sync-products": "node --env-file=.env scripts/sync-products.mjs",
     "topicos": "node --env-file=.env scripts/list-topics.mjs",
     "corrigir-publicados": "node --env-file=.env scripts/fix-published.mjs",
+    "rerender": "node --env-file=.env scripts/rerender.mjs",
     "buscar": "node --env-file=.env scripts/buscar.mjs"
   },
   "dependencies": {

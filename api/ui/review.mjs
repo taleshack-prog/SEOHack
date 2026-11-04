@@ -39,7 +39,7 @@ function marcar(trecho, numero) {
   return i < 0 ? t : `${t.slice(0, i)}<mark>${n}</mark>${t.slice(i + n.length)}`;
 }
 
-function render(article, { erro = null, aviso = null, cliente = null } = {}) {
+function render(article, { erro = null, aviso = null, cliente = null, texto = false } = {}) {
   const jaPublicado = article.status === 'published';
   const parts = splitForReview(article.markdown || '');
   const corpo = parts.map((p) => p.type === 'text'
@@ -53,7 +53,14 @@ function render(article, { erro = null, aviso = null, cliente = null } = {}) {
   const total = parseNotes(article.markdown || '').length;
   // Sem lacunas, o manuscrito vira editor: o operador precisa poder trocar um
   // número ou colar a fonte. Com lacunas, o modo costura continua.
-  const editor = jaPublicado || total === 0;
+  //
+  // 04/11/2026: faltava a terceira porta. O artigo do Posthink saiu com o nome
+  // grafado "PostHink" em todo o texto, e como ele tem lacunas a tela só
+  // oferecia os campos das lacunas — não havia como trocar uma letra no corpo
+  // sem publicar antes o texto errado. `?texto=1` abre o manuscrito inteiro
+  // sem fechar a costura: os marcadores continuam no texto e as lacunas voltam
+  // a aparecer quando se sai daqui.
+  const editor = jaPublicado || total === 0 || texto;
   const numeros = findUnsourcedStats(article.markdown || '');
   const painelNumeros = numeros.length ? `
 <div class="card" style="border-left:3px solid #c9a227">
@@ -69,8 +76,15 @@ function render(article, { erro = null, aviso = null, cliente = null } = {}) {
        o HTML no site é regravado no mesmo caminho, sem mudar a URL.
        <a href="${esc(article.external_url || '#')}" target="_blank" rel="noopener">Ver publicado</a>`
     : total
-      ? `${total === 1 ? 'Um trecho aguarda' : `${total} trechos aguardam`} sua experiência.
-       Publique quando estiver pronto — o artigo vai para o site com as suas palavras no lugar das lacunas.`
+      ? (texto
+        ? `Manuscrito inteiro, com os marcadores no lugar das lacunas. Corrija o que
+       precisar e salve — não apague os marcadores, eles viram
+       ${total === 1 ? 'a lacuna' : 'as lacunas'} de volta.
+       <a href="/review/${esc(article.slug)}">Voltar para as lacunas</a>`
+        : `${total === 1 ? 'Um trecho aguarda' : `${total} trechos aguardam`} sua experiência.
+       Publique quando estiver pronto — o artigo vai para o site com as suas palavras no lugar das lacunas.
+       Precisa corrigir uma palavra no meio do texto?
+       <a href="/review/${esc(article.slug)}?texto=1">Editar o manuscrito inteiro</a>`)
       : `O artigo foi segurado para você conferir os números destacados abaixo.
        Edite o texto se precisar e publique — ou publique como está, se os números estão certos.`;
 
@@ -112,7 +126,8 @@ export default comErro(requireAuth(async (req, res) => {
     const article = slug && await load(client.id, slug);
     if (!article) return send(res, page({ title: 'Não encontrado',
       body: '<h1 class="lede">Este artigo não existe.</h1><p class="sub"><a href="/">Voltar para a fila</a></p>' }), 404);
-    return send(res, render(article, { cliente: client.name }));
+    return send(res, render(article, { cliente: client.name,
+                                       texto: req.query?.texto === '1' }));
   }
 
   if (req.method !== 'POST') { res.statusCode = 405; return res.end(); }

@@ -141,7 +141,16 @@ test('vercel.json empacota prompts em todos os crons', async () => {
   const { fileURLToPath } = await import('node:url');
   const j = JSON.parse(await readFile(fileURLToPath(new URL('../vercel.json', import.meta.url)), 'utf8'));
   const crons = Object.keys(j.functions).filter((f) => f.startsWith('api/cron/'));
-  assert.ok(crons.length >= 5, 'esperava 5 crons configurados');
+  assert.ok(crons.length >= 5, 'esperava ao menos 5 crons configurados');
+
+  // Todos, inclusive os que hoje não leem prompt nenhum.
+  //
+  // 06/11/2026 tentei refinar para "só os crons que usam prompt" e a checagem
+  // passou a errar: o cron de otimização chega ao loadPrompt por dois níveis
+  // de import (rewrite -> content-engine) e foi classificado como se não
+  // usasse. Empacotar um diretório de prompts a mais num cron custa alguns
+  // KB; um guarda que deixa de ver a dependência custa ENOENT no cold start,
+  // em produção, no domingo de madrugada.
   for (const c of crons) {
     assert.equal(j.functions[c].includeFiles, 'prompts/**', `${c} sem includeFiles`);
   }

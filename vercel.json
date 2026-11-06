@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/optimization",
       "schedule": "0 22 * * 0"
+    },
+    {
+      "path": "/api/cron/resumo",
+      "schedule": "0 23 * * 5"
     }
   ],
   "functions": {
@@ -61,6 +65,10 @@
     },
     "api/ui/melhorar.mjs": {
       "maxDuration": 300,
+      "includeFiles": "prompts/**"
+    },
+    "api/cron/resumo.mjs": {
+      "maxDuration": 60,
       "includeFiles": "prompts/**"
     }
   },

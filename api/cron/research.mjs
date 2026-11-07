@@ -14,6 +14,7 @@ import { runStage } from '../../lib/pipeline.mjs';
 import { defaultWindow, blogImpressions, pageTwoOpportunities } from '../../lib/search-console.mjs';
 import { opportunityScore } from '../../lib/score.mjs';
 import { gerarPauta, ALVO_DA_FILA, MAX_POR_EXECUCAO } from '../../lib/pauta.mjs';
+import { buscar, temChave } from '../../lib/perplexity.mjs';
 import { assertBudget, recordUsage } from '../../lib/budget.mjs';
 
 export { opportunityScore } from '../../lib/score.mjs';
@@ -81,7 +82,7 @@ async function pautaMode(client, impressions) {
 
   const r = await gerarPauta(
     { produtos: (client.adapter_config || {}).products || [], clusters, existentes, quantos },
-    { clientId: client.id });
+    { clientId: client.id, buscarImpl: temChave() ? buscar : null });
 
   if (r.uso) {
     await recordUsage(client.id, { stage: 'research', provider: r.uso.provider,
@@ -112,9 +113,19 @@ async function pautaMode(client, impressions) {
     mode: 'pauta',
     blogImpressions: impressions,
     queueDepth: count + inserted,
-    processed: r.aceitos.length,
+    // processed é quantos CANDIDATOS foram avaliados, não quantos passaram.
+    // Com processed = aceitos, "fila cheia" e "avaliei catorze e reprovei
+    // todos" viravam a mesma linha no pipeline_runs: zero processados, zero
+    // sucedidos, status 'skipped' nos dois. São diagnósticos opostos — um diz
+    // que está tudo bem, o outro que o nicho não tem busca.
+    processed: r.aceitos.length + r.recusados.length,
     succeeded: inserted,
+    // Sem sonda, "recusados" é só o que repetiu. Com sonda, é o número que
+    // interessa: quantos termos foram descartados por não ter demanda.
+    sondado: r.sondado,
+    sondados: r.sondados ?? 0,
     recusados: r.recusados.length,
+    semDemanda: r.recusados.filter((x) => x.motivo).map((x) => `${x.topico}: ${x.motivo}`),
     temas: r.aceitos.map((t) => t.topico),
   };
 }

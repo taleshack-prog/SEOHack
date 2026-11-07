@@ -28,7 +28,7 @@
   ],
   "functions": {
     "api/cron/research.mjs": {
-      "maxDuration": 120,
+      "maxDuration": 300,
       "includeFiles": "prompts/**"
     },
     "api/cron/content.mjs": {

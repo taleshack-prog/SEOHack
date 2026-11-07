@@ -134,3 +134,32 @@ test('falha de envio não derruba o estágio, mas aparece no resultado', async (
   assert.match(src, /error: `resumo não enviado/);
   assert.doesNotMatch(src, /throw new Error/, 'observação não pode derrubar o pipeline');
 });
+
+// --- a pauta é a entrada do motor ---
+test('pauta que falhou aparece no resumo, não some', () => {
+  const r = montarResumo({ fila: 2, pauta: { status: 'failed', erro: 'orçamento esgotado' } });
+  assert.match(r.texto, /Pauta de segunda: FALHOU — orçamento esgotado/);
+});
+
+test('nenhum tema aprovado diz o que isso significa', () => {
+  const r = montarResumo({ fila: 2, pauta: { status: 'partial', avaliados: 14, novos: 0 } });
+  assert.match(r.texto, /nenhum tema aprovado entre os 14 avaliados/);
+  assert.match(r.texto, /é o nicho não ter busca/);
+});
+
+test('pauta boa relata quantos entraram e quantos foram avaliados', () => {
+  const r = montarResumo({ fila: 8, pauta: { status: 'success', avaliados: 14, novos: 5 } });
+  assert.match(r.texto, /5 temas novos na fila, de 14 avaliados/);
+});
+
+test('fila cheia não é confundida com nicho sem busca', () => {
+  const cheia = montarResumo({ fila: 9, pauta: { status: 'skipped', avaliados: 0, novos: 0 } });
+  const seca = montarResumo({ fila: 1, pauta: { status: 'partial', avaliados: 14, novos: 0 } });
+  assert.match(cheia.texto, /a fila já estava cheia/);
+  assert.match(seca.texto, /nenhum tema aprovado/);
+  assert.notEqual(cheia.texto, seca.texto);
+});
+
+test('sem execução de pesquisa na janela, o bloco não aparece', () => {
+  assert.doesNotMatch(montarResumo({ fila: 5 }).texto, /Pauta de segunda/);
+});

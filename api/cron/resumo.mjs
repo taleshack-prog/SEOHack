@@ -50,6 +50,13 @@ export default cronHandler(async () => {
            WHERE client_id = ${client.id}`,
     ]);
 
+    const [pauta] = await sql`
+      SELECT status, items_processed, items_succeeded, error_message
+        FROM pipeline_runs
+       WHERE client_id = ${client.id} AND stage = 'research'
+         AND started_at > NOW() - INTERVAL ${JANELA}
+       ORDER BY started_at DESC LIMIT 1`;
+
     const resumo = montarResumo({
       cliente: client.name,
       publicados: publicados.map((a) => ({ title: a.title, url: `${base}/${a.slug}` })),
@@ -68,6 +75,12 @@ export default cronHandler(async () => {
       topicosPresos: presos.map((t) => ({ topic: t.topic, motivo: t.status_reason })),
       fila,
       reescritas,
+      pauta: pauta ? {
+        status: pauta.status,
+        avaliados: pauta.items_processed,
+        novos: pauta.items_succeeded,
+        erro: pauta.error_message,
+      } : null,
       custo: custo ? { gasto: custo.spent_usd, teto: custo.monthly_budget_usd } : null,
     });
 

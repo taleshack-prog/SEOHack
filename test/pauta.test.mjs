@@ -154,3 +154,104 @@ test('o prompt pede o formato que o parser compartilhado consegue ler', () => {
   const p = montarPrompt({ produtos: [], clusters: [], existentes: [], quantos: 3 });
   assert.match(p, /"temas": \[/, 'pedir array no topo faz a resposta sumir no parseJson');
 });
+
+// --- a pauta passou a ser medida na SERP ---------------------------------
+//
+// 06/11/2026: 29 artigos, 21 na primeira página, 4 cliques no mês. O termo
+// era escolhido por relevância, com dificuldade estimada pelo próprio modelo
+// e volume gravado como zero.
+import { pontuarComSinais, CANDIDATOS } from '../lib/pauta.mjs';
+
+const SERP_BOA = [
+  { title: 'Como calcular consanguinidade: guia', url: 'https://criadorrural.com.br/a' },
+  { title: 'Calcular consanguinidade do plantel', url: 'https://vetblog.com.br/b' },
+  { title: 'Consanguinidade: como calcular', url: 'https://zootecnia.com.br/c' },
+  { title: 'Cálculo de consanguinidade passo a passo', url: 'https://fazenda.com.br/d' },
+  { title: 'Consanguinidade em rebanhos: como calcular', url: 'https://agro.com.br/e' },
+];
+const SERP_RUIM = [
+  { title: 'Genética quantitativa', url: 'https://pt.wikipedia.org/wiki/a' },
+  { title: 'Animal breeding review', url: 'https://www.nature.com/b' },
+];
+
+const modelo = (temas) => async () => ({
+  text: JSON.stringify({ temas }), provider: 'anthropic', model: 'm',
+  inputTokens: 1, outputTokens: 1,
+});
+
+test('termo sem demanda na SERP não entra na fila', async () => {
+  const r = await gerarPauta(
+    { produtos: PRODUTOS, clusters: CLUSTERS, existentes: [], quantos: 5 },
+    {
+      completeImpl: modelo([
+        { topico: 'como calcular consanguinidade do plantel', afinidade: 2, dificuldade: 10 },
+        { topico: 'como funciona o gene mc1r', afinidade: 2, dificuldade: 10 },
+      ]),
+      buscarImpl: async (q) => ({ results: q.includes('mc1r') ? SERP_RUIM : SERP_BOA }),
+    });
+
+  assert.equal(r.sondado, true);
+  assert.deepEqual(r.aceitos.map((t) => t.topico), ['como calcular consanguinidade do plantel']);
+  assert.ok(r.recusados.some((x) => x.topico === 'como funciona o gene mc1r' && x.motivo));
+});
+
+test('a dificuldade medida manda no score, não o palpite do modelo', () => {
+  const chute = { topico: 'x', afinidade: 1, score: 99, sinais: { dificuldade: 90, evidencia: 1 } };
+  const r = pontuarComSinais(chute);
+  assert.notEqual(r.score, 99, 'manteve o palpite do modelo');
+  assert.ok(r.score < 99);
+});
+
+test('entre dois termos igualmente difíceis, ganha o que tem mais gente escrevendo', () => {
+  const a = pontuarComSinais({ topico: 'a', afinidade: 1, sinais: { dificuldade: 40, evidencia: 1.0 } });
+  const b = pontuarComSinais({ topico: 'b', afinidade: 1, sinais: { dificuldade: 40, evidencia: 0.4 } });
+  assert.ok(a.score > b.score);
+});
+
+test('sem sonda, o termo passa com o palpite — e isso fica declarado', async () => {
+  const r = await gerarPauta({ produtos: PRODUTOS, clusters: [], existentes: [], quantos: 3 },
+    { completeImpl: modelo([{ topico: 'como calcular consanguinidade do plantel' }]) });
+  assert.equal(r.sondado, false);
+  assert.equal(r.aceitos.length, 1);
+});
+
+test('o volume continua zero — a Perplexity não mede volume de busca', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(
+    fileURLToPath(new URL('../api/cron/research.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /0, \$\{t\.score\}/, 'search_volume deixou de ser zero');
+  const lib = await readFile(fileURLToPath(new URL('../lib/pauta.mjs', import.meta.url)), 'utf8');
+  assert.match(lib, /`search_volume` continua ZERO/);
+});
+
+test('o prompt pede termo comum, não termo que só especialista digita', () => {
+  const p = montarPrompt({ produtos: PRODUTOS, clusters: CLUSTERS, existentes: [], quantos: 5 });
+  assert.match(p, /quatro cliques por mês/);
+  assert.match(p, /melhor chegar em quinto numa busca que mil/);
+  assert.match(p, /nome de gene ou de protocolo/);
+});
+
+test('pede mais candidatos do que precisa, porque a sonda reprova', () => {
+  assert.ok(CANDIDATOS > MAX_POR_EXECUCAO * 2);
+  const p = montarPrompt({ produtos: [], clusters: [], existentes: [], quantos: CANDIDATOS });
+  assert.match(p, new RegExp(`Proponha ${CANDIDATOS} temas`));
+});
+
+test('o cron sonda quando há chave da Perplexity', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(
+    fileURLToPath(new URL('../api/cron/research.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /buscarImpl: temChave\(\) \? buscar : null/);
+  assert.match(src, /semDemanda/, 'o motivo da recusa precisa chegar ao resumo');
+});
+
+test('o cron registra quantos candidatos avaliou, não quantos passaram', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(
+    fileURLToPath(new URL('../api/cron/research.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /processed: r\.aceitos\.length \+ r\.recusados\.length/,
+    'fila cheia e "reprovei todos" voltariam a ser a mesma linha no banco');
+});

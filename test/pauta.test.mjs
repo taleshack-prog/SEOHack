@@ -255,3 +255,78 @@ test('o cron registra quantos candidatos avaliou, não quantos passaram', async 
   assert.match(src, /processed: r\.aceitos\.length \+ r\.recusados\.length/,
     'fila cheia e "reprovei todos" voltariam a ser a mesma linha no banco');
 });
+
+test('a fila vazia não manda mais o operador colar tópicos como se fosse o normal', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(
+    fileURLToPath(new URL('../api/ui/home.mjs', import.meta.url)), 'utf8');
+  // 10/11: a fila amanheceu vazia e a tela dizia que os crons "não geram nada
+  // enquanto ela estiver assim" — texto de antes de a pauta existir. Fila
+  // vazia na terça agora é sintoma, não estado normal.
+  assert.doesNotMatch(src, /crons de segunda, quarta e sexta também não/);
+  assert.match(src, /npm run execucoes/);
+});
+
+test('existe caminho para saber por que um cron não produziu', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(
+    fileURLToPath(new URL('../scripts/execucoes.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /FROM pipeline_runs/);
+  assert.match(src, /error_message/);
+  // Os três diagnósticos são opostos e precisam sair com nomes diferentes.
+  assert.match(src, /NÃO rodou/);
+  assert.match(src, /a fila já estava cheia/);
+  assert.match(src, /Avaliou e reprovou todos/);
+});
+
+// --- o CHECK e o código têm de andar juntos -------------------------------
+//
+// 09/11/2026, 3h: o cron de pesquisa chamou o modelo, gerou a pauta e morreu
+// ao gravar o custo — `llm_usage_stage_check` não previa 'research'. A chamada
+// foi paga, nada entrou na fila, e o blog passou a semana sem produzir.
+//
+// É o segundo desta família: em outubro foi `topics_source_check` com
+// source='painel'. Da primeira vez o teste conferiu só a coluna que quebrou.
+// Agora varre o código inteiro.
+test('todo stage gravado pelo código cabe no CHECK de llm_usage', async () => {
+  const { readFile, readdir } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const raiz = (f) => fileURLToPath(new URL(`../${f}`, import.meta.url));
+
+  // O CHECK vale como a migração mais recente o deixou.
+  const migs = (await readdir(raiz('db/migrations'))).sort();
+  let permitidos = null;
+  for (const m of migs) {
+    const sql = await readFile(raiz(`db/migrations/${m}`), 'utf8');
+    const achado = [...sql.matchAll(/llm_usage_stage_check[\s\S]{0,200}?CHECK \(stage IN \(([^)]*)\)/g)].pop()
+      || [...sql.matchAll(/stage\s+VARCHAR\(\d+\)[^,]*?CHECK \(stage IN \(([^)]*)\)/g)].pop();
+    if (achado) permitidos = achado[1].match(/'[^']+'/g).map((v) => v.slice(1, -1));
+  }
+  assert.ok(permitidos?.length, 'não achei o CHECK de llm_usage nas migrações');
+
+  // Todo literal `stage: '...'` do código, em lib/ e api/.
+  const usados = new Set();
+  const varrer = async (dir) => {
+    for (const e of await readdir(raiz(dir), { withFileTypes: true })) {
+      if (e.isDirectory()) await varrer(`${dir}/${e.name}`);
+      else if (e.name.endsWith('.mjs')) {
+        const src = await readFile(raiz(`${dir}/${e.name}`), 'utf8');
+        for (const m of src.matchAll(/stage: '([a-z_]+)'/g)) usados.add(m[1]);
+      }
+    }
+  };
+  await varrer('lib');
+  await varrer('api');
+
+  // runStage usa os seus próprios nomes em pipeline_runs, que é outra tabela.
+  const DE_PIPELINE = new Set(['content', 'optimization', 'resumo', 'tracking', 'citation', 'research']);
+  for (const s of usados) {
+    if (DE_PIPELINE.has(s) && !permitidos.includes(s)) continue;
+    assert.ok(permitidos.includes(s),
+      `o código grava stage '${s}' em llm_usage e o CHECK só aceita ${permitidos.join(', ')}`);
+  }
+  assert.ok(usados.has('research'), 'a varredura deixou de encontrar os stages do código');
+  assert.ok(permitidos.includes('research'), "o CHECK precisa aceitar 'research'");
+});

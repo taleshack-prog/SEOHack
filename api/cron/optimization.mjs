@@ -78,21 +78,33 @@ export default cronHandler(async () => {
         resultados.push(await reescreverArtigo(client, c.slug, { motivo: 'content_gap' }));
       } catch (err) {
         console.error(`[optimization] ${c.slug}: ${err.message}`);
-        resultados.push({ publicado: false, slug: c.slug, motivo: err.message });
+        resultados.push({ publicado: false, classe: 'problema', slug: c.slug, motivo: err.message });
       }
     }
 
     const publicados = resultados.filter((r) => r.publicado);
-    const recusados = resultados.filter((r) => !r.publicado);
+
+    // Recusa correta não é falha.
+    //
+    // 10/11/2026: o cron vinha sendo marcado 'failed' todo domingo porque duas
+    // páginas ganham todas as buscas que recebem e o motor dizia, certíssimo,
+    // que não havia alvo. Isso ia para error_message, o finishRun via erro e
+    // gravava falha — então o estágio que mais acerta era o que mais parecia
+    // quebrado, e uma falha de verdade ficaria escondida no meio.
+    const nadaAFazer = resultados.filter((r) => !r.publicado && r.classe === 'nada-a-fazer');
+    const problemas = resultados.filter((r) => !r.publicado && r.classe !== 'nada-a-fazer');
 
     return {
-      processed: candidates.length,
+      // Página sem alvo não entra na conta: não foi processada, não havia o
+      // que processar. Assim 2/2 significa "tentei duas e consegui duas".
+      processed: candidates.length - nadaAFazer.length,
       succeeded: publicados.length,
       evaluatedPending: evaluated,
       reescritos: publicados.map((r) => ({ slug: r.slug, alvo: r.alvo, mudancas: r.mudancas })),
       needsHumanDecision: exhausted.map((e) => e.slug),
-      ...(recusados.length
-        ? { error: recusados.map((r) => `"${r.slug}": ${r.motivo}`).join(' | ') }
+      semAlvo: nadaAFazer.map((r) => r.slug),
+      ...(problemas.length
+        ? { error: problemas.map((r) => `"${r.slug}": ${r.motivo}`).join(' | ') }
         : {}),
     };
   });

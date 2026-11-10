@@ -364,3 +364,42 @@ test('o prompt manda melhorar a seção existente em vez de criar outra', async 
   assert.doesNotMatch(src, /em uma seção dedicada se\n\s*ainda não houver/,
     'a instrução que produziu a seção repetida continua lá');
 });
+
+// --- recusa correta não é falha ---------------------------------------------
+//
+// 10/11/2026: o cron de otimização aparecia como 'failed' todo domingo. O
+// motivo era o motor acertando — duas páginas ganham todas as buscas que
+// recebem, não há alvo, e dizer isso ia para error_message. O estágio que mais
+// acerta era o que mais parecia quebrado, e uma falha de verdade ficaria
+// escondida no meio das recusas corretas.
+test('sem alvo e limite de tentativas são "nada a fazer", não problema', async () => {
+  reset();
+  consultas = [{ ...CONSULTAS[1] }]; // só no Top 10
+  const semAlvo = await reescreverArtigo(CLIENTE, ARTIGO.slug);
+  assert.equal(semAlvo.publicado, false);
+  assert.equal(semAlvo.classe, 'nada-a-fazer');
+
+  reset();
+  artigo = { ...ARTIGO, rewrite_count: MAX_TENTATIVAS };
+  const limite = await reescreverArtigo(CLIENTE, ARTIGO.slug);
+  assert.equal(limite.classe, 'nada-a-fazer');
+});
+
+test('artigo inexistente continua sendo problema', async () => {
+  reset();
+  artigo = null;
+  const r = await reescreverArtigo(CLIENTE, 'nao-existe');
+  assert.equal(r.classe, 'problema');
+});
+
+test('o cron não marca falha quando só houve recusa correta', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(
+    fileURLToPath(new URL('../api/cron/optimization.mjs', import.meta.url)), 'utf8');
+  assert.match(src, /classe === 'nada-a-fazer'/);
+  assert.match(src, /processed: candidates\.length - nadaAFazer\.length/,
+    'página sem alvo não pode contar como processada');
+  assert.doesNotMatch(src, /error: recusados\.map/, 'voltou a tratar recusa como erro');
+  assert.match(src, /semAlvo: nadaAFazer/, 'a recusa precisa continuar visível, só não como falha');
+});

@@ -330,3 +330,33 @@ test('todo stage gravado pelo código cabe no CHECK de llm_usage', async () => {
   assert.ok(usados.has('research'), 'a varredura deixou de encontrar os stages do código');
   assert.ok(permitidos.includes('research'), "o CHECK precisa aceitar 'research'");
 });
+
+// --- o erro precisa dizer o que veio --------------------------------------
+//
+// 10/11/2026: a pauta falhou com "resposta do modelo ilegível: Resposta do LLM
+// não contém JSON" e não dava para saber se o modelo recusou, divagou ou foi
+// cortado pelo limite de tokens. Sem isso o conserto vira adivinhação.
+test('erro de pauta carrega o stop_reason e o começo da resposta', async () => {
+  const r = await gerarPauta({ produtos: [], clusters: [], existentes: [] },
+    { completeImpl: async () => ({
+      text: 'Claro! Aqui estão os temas que sugiro para o blog, considerando os produtos',
+      stopReason: 'max_tokens', provider: 'p', model: 'm' }) });
+  assert.match(r.erro, /stop_reason=max_tokens/);
+  assert.match(r.erro, /começo: "Claro! Aqui estão os temas/);
+});
+
+test('resposta vazia é nomeada como vazia, não como ilegível sem mais', async () => {
+  const r = await gerarPauta({ produtos: [], clusters: [], existentes: [] },
+    { completeImpl: async () => ({ text: '', stopReason: 'end_turn', provider: 'p', model: 'm' }) });
+  assert.match(r.erro, /texto vazio/);
+});
+
+test('o limite de tokens comporta catorze temas', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const src = await readFile(fileURLToPath(new URL('../lib/pauta.mjs', import.meta.url)), 'utf8');
+  const m = src.match(/maxTokens: (\d+)/);
+  assert.ok(Number(m[1]) >= 4000, `maxTokens ${m[1]} corta a resposta de ${CANDIDATOS} temas`);
+  assert.match(src, /parseJson\(r\.text, r\.stopReason\)/,
+    'sem o stopReason o parseJson chama resposta cortada de "não contém JSON"');
+});

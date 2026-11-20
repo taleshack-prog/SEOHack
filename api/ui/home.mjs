@@ -175,9 +175,13 @@ export default comErro(requireAuth(async (req, res) => {
       // com a fila vazia foi o que fez o operador esperar um dia inteiro.
       : `<div class="empty" style="text-align:left">
           <strong>Nada a produzir</strong>
-          A fila de tópicos está vazia, e os crons de segunda, quarta e sexta também não
-          geram nada enquanto ela estiver assim.
-          <p style="margin:14px 0 0"><a href="/topicos">Escrever novos tópicos →</a></p>
+          A fila está vazia. Desde 06/11 quem a abastece é o cron de segunda às 3h, que
+          gera a pauta a partir dos produtos cadastrados e descarta os temas sem demanda
+          na busca — então fila vazia na terça significa que ele falhou ou reprovou tudo,
+          e não que falta alguém colar tópicos.
+          <p style="margin:14px 0 0">Para ver qual dos dois foi, rode
+          <code>npm run execucoes</code>.
+          <a href="/topicos">Escrever tópicos à mão →</a></p>
         </div>`;
 
   const body = `

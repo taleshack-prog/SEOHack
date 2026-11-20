@@ -23,6 +23,7 @@
     "rerender": "node --env-file=.env scripts/rerender.mjs",
     "publicados": "node --env-file=.env scripts/publicados.mjs",
     "cluster": "node --env-file=.env scripts/cluster.mjs",
+    "execucoes": "node --env-file=.env scripts/execucoes.mjs",
     "buscar": "node --env-file=.env scripts/buscar.mjs"
   },
   "dependencies": {

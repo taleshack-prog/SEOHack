@@ -7,6 +7,10 @@
 // Ela é honesta sobre o que ainda não sabe. Enquanto a Search Console não
 // estiver ligada, a coluna de ranking mostra o motivo em vez de zeros, porque
 // zero sugere fracasso e ausência de dado não é fracasso.
+//
+// Números de busca: cards, gráfico e tabela usam a MESMA janela (últimos 30
+// dias, somada da seo_metrics). Antes, os cards somavam só o último dia de
+// cada artigo, e o gráfico somava 30 dias — por isso a divergência.
 import { requireAuth } from '../../lib/auth.mjs';
 import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
@@ -23,7 +27,7 @@ export default comErro(requireAuth(async (req, res) => {
   const client = await clienteAtual(req);
 
   const artigos = (await sql`
-    SELECT p.slug, p.title, p.cluster, p.is_pillar, p.status,
+    SELECT p.id, p.slug, p.title, p.cluster, p.is_pillar, p.status,
            p.first_published_at, p.content_updated_at,
            p.metric_date, p.position, p.impressions, p.clicks, p.ctr_pct,
            p.citation_count,
@@ -82,6 +86,17 @@ export default comErro(requireAuth(async (req, res) => {
      WHERE client_id = ${client.id} AND metric_date > CURRENT_DATE - 30
      GROUP BY metric_date ORDER BY metric_date`;
 
+  // Totais de 30 dias por artigo — a mesma janela do gráfico e dos cards.
+  const totaisLinhas = (await sql`
+    SELECT article_id::text AS id,
+           SUM(impressions)::int AS impressoes,
+           SUM(clicks)::int AS cliques
+      FROM seo_metrics
+     WHERE client_id = ${client.id} AND article_id IS NOT NULL
+       AND metric_date > CURRENT_DATE - 30
+     GROUP BY article_id`) || [];
+  const totaisPorArtigo = new Map(totaisLinhas.map((r) => [r.id, r]));
+
   const agentes = [...new Set((crawlerPorDia || []).map((r) => r.user_agent))];
   const serieCrawlers = agentes.map((nome) => ({
     nome,
@@ -95,21 +110,25 @@ export default comErro(requireAuth(async (req, res) => {
 
   const ranking = distribuicaoDeRanking(artigos);
 
-  // Agregados só fazem sentido quando há dado.
-  const somaImp = artigos.reduce((s, a) => s + Number(a.impressions || 0), 0);
-  const somaCliques = artigos.reduce((s, a) => s + Number(a.clicks || 0), 0);
+  // Cards: somam o mesmo que o gráfico (30 dias, seo_metrics).
+  const somaImp = (buscaPorDia || []).reduce((s, r) => s + Number(r.impressoes || 0), 0);
+  const somaCliques = (buscaPorDia || []).reduce((s, r) => s + Number(r.cliques || 0), 0);
   const citacoes = artigos.reduce((s, a) => s + Number(a.citation_count || 0), 0);
 
-  const linhas = artigos.map((a) => `<tr>
+  const linhas = artigos.map((a) => {
+    const t = totaisPorArtigo.get(String(a.id)) || { impressoes: 0, cliques: 0 };
+    const ctr = t.impressoes ? `${((t.cliques / t.impressoes) * 100).toFixed(1)}%` : '—';
+    return `<tr>
     <td>${esc(a.title)} ${a.is_pillar ? '<span class="pill pillar">pilar</span>' : ''}
       <span class="sub-line">${esc(a.cluster || '—')} · publicado há ${dias(a.first_published_at)}d</span></td>
     <td class="num">${a.position ? Number(a.position).toFixed(1) : '—'}</td>
-    <td class="num">${a.impressions ?? '—'}</td>
-    <td class="num">${a.clicks ?? '—'}</td>
-    <td class="num">${a.ctr_pct ? `${a.ctr_pct}%` : '—'}</td>
+    <td class="num">${t.impressoes}</td>
+    <td class="num">${t.cliques}</td>
+    <td class="num">${ctr}</td>
     <td class="num">${medicao.ruim ? '—' : (a.citation_count || 0)}</td>
     <td class="num">${dinheiro(a.custo)}</td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 
   // O que falta para cada sinal existir, dito na ordem em que acontece.
   const pendencias = [];
@@ -138,8 +157,8 @@ Custo total até agora: <strong>${dinheiro(totalCusto.total)}</strong>${
   artigos.length ? ` (${dinheiro(Number(totalCusto.total) / artigos.length)} por artigo)` : ''}.</p>
 
 ${temGsc ? `<div class="cards">
-  <div class="stat"><span class="n">${somaImp}</span><span class="l">impressões</span></div>
-  <div class="stat"><span class="n">${somaCliques}</span><span class="l">cliques</span></div>
+  <div class="stat"><span class="n">${somaImp}</span><span class="l">impressões · 30 dias</span></div>
+  <div class="stat"><span class="n">${somaCliques}</span><span class="l">cliques · 30 dias</span></div>
   <div class="stat"><span class="n">${medicao.ruim ? '—' : citacoes}</span>
     <span class="l">citações em IA</span>
     <span class="sub-line"${medicao.ruim ? ' style="color:var(--proof)"' : ''}>${esc(medicao.texto)}</span></div>
@@ -163,7 +182,7 @@ ${ranking.total ? graficoBarras(ranking.faixas, {
 <h2 class="sec">Por artigo</h2>
 ${artigos.length ? `<table>
   <thead><tr>
-    <th>Artigo</th><th>Posição</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>Citações</th><th>Custo</th>
+    <th>Artigo</th><th>Posição</th><th>Impr. 30d</th><th>Cliques 30d</th><th>CTR</th><th>Citações</th><th>Custo</th>
   </tr></thead>
   <tbody>${linhas}</tbody>
 </table>
@@ -178,7 +197,7 @@ ${graficoBarras(artigos.map((a) => {
 <h2 class="sec">Crawlers de IA (30 dias)</h2>
 <p class="note" style="margin-bottom:16px">Visita de crawler é um robô baixando suas páginas para o índice dele —
 não é alguém buscando pelo site. É pré-condição para aparecer em resultados, não resultado.
-Quem mede busca de pessoa é a coluna <strong>Impr.</strong> na tabela de artigos, que vem da Search Console.</p>
+Quem mede busca de pessoa é a coluna <strong>Impr. 30d</strong> na tabela de artigos, que vem da Search Console.</p>
 ${graficoLinha(serieCrawlers, { titulo: 'Visitas por dia', unidade: 'o número na legenda é o total do período' })}
 ${porAgente.length ? `<table>
   <thead><tr><th>Agente</th><th>Visitas no período</th><th>Última</th></tr></thead>

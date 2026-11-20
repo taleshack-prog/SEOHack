@@ -20,7 +20,8 @@ import { comErro } from '../../lib/erro.mjs';
 import { sql } from '../../lib/db.mjs';
 import { clienteAtual } from '../../lib/tenant.mjs';
 import { splitForReview, applyNotes, parseNotes } from '../../lib/notes.mjs';
-import { validateArticle, findUnsourcedStats } from '../../lib/validate.mjs';
+import { validateArticle, findUnsourcedStats, productForCluster } from '../../lib/validate.mjs';
+import { garantirLinks } from '../../lib/cluster-links.mjs';
 import { publish as publishViaAdapter } from '../../lib/adapters/index.mjs';
 import { page, send, esc } from '../../lib/ui.mjs';
 
@@ -141,7 +142,7 @@ export default comErro(requireAuth(async (req, res) => {
   const notas = [].concat(body.nota ?? []);
   // Artigo publicado é editado como texto corrido; artigo novo é costurado a
   // partir das lacunas. O editor tem precedência quando existe.
-  const markdown = typeof body.markdown === 'string' && body.markdown.trim()
+  let markdown = typeof body.markdown === 'string' && body.markdown.trim()
     ? body.markdown.replace(/\r\n/g, '\n').trim()
     : applyNotes(article.markdown || '', notas);
 
@@ -212,6 +213,17 @@ export default comErro(requireAuth(async (req, res) => {
                        ? publicados.filter((a) => a.cluster === article.cluster && a.slug !== article.slug)
                            .map((a) => a.slug)
                        : undefined };
+  // Mesma garantia do motor: completa os links que faltam antes de validar.
+  const outrosPublicados = publicados.filter((a) => a.slug !== article.slug);
+  const baseLinks = Array.isArray(contexto.clusterSlugs) ? contexto.clusterSlugs.length : outrosPublicados.length;
+  markdown = garantirLinks(markdown, {
+    slug: article.slug,
+    publicados: outrosPublicados,
+    cluster: article.cluster,
+    produto: productForCluster(client.adapter_config?.products || [], article.cluster),
+    minInternos: Math.min(2, baseLinks),
+    site: client.adapter_config || {},
+  });
   const check = validateArticle({ slug: article.slug, frontmatter, markdown }, contexto);
 
   // Correção de artigo publicado não precisa consertar tudo — só não pode piorar.

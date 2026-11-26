@@ -90,6 +90,7 @@ const config = {
   ...(alvo.cssHref ? { cssHref: alvo.cssHref } : {}),
   ...(alvo.authorUrl ? { authorUrl: alvo.authorUrl } : {}),
   ...(alvo.logoUrl ? { logoUrl: alvo.logoUrl } : {}),
+  ...(alvo.blogDescription ? { blogDescription: alvo.blogDescription } : {}),
   ...(Array.isArray(alvo.productPaths) ? { productPaths: alvo.productPaths } : {}),
   ...(Object.keys(shell).length ? { shell } : {}),
   products: produtos,

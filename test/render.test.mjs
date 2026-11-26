@@ -141,6 +141,16 @@ test('CSP: o script do site fica no fim do body, não inline', () => {
   assert.match(html, /<script type="application\/ld\+json">/);
 });
 
+test('índice usa a descrição do destino, não um texto fixo', () => {
+  // Era fixa ("Artigos técnicos sobre SaaS, Web3 e desenvolvimento.") e saía
+  // igual no blog do Posthink, que fala de LinkedIn.
+  const proprio = renderIndex({ articles: publicados, site: { ...site, blogDescription: 'Guias de LinkedIn & cia.' }, shell });
+  assert.match(proprio, /<meta name="description" content="Guias de LinkedIn &amp; cia\.">/);
+  assert.ok(!proprio.includes('SaaS, Web3'), 'voltou o texto fixo');
+  const semCampo = renderIndex({ articles: publicados, site: { ...site, name: 'Posthink', blogDescription: undefined }, shell });
+  assert.match(semCampo, /<meta name="description" content="Artigos do blog Posthink\.">/);
+});
+
 test('índice vazio não quebra', () => {
   const html = renderIndex({ articles: [], site, shell });
   assert.match(html, /Em breve/);

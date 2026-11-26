@@ -11,6 +11,7 @@
     "blogBasePath": "/blog",
     "cssHref": "/css/styles.css",
     "authorUrl": "https://hacktechfarm.com.br/sobre",
+    "blogDescription": "Artigos da Hack Tech Farm sobre os temas dos nossos produtos: LinkedIn, genética animal, tokenização de arte e software.",
     "productPaths": [
       "/produtos",
       "/posthink",
@@ -32,6 +33,7 @@
     "baseUrl": "https://posthink.com.br",
     "blogBasePath": "/blog",
     "authorUrl": "https://posthink.com.br",
+    "blogDescription": "Auditoria de perfil, constância e escrita no LinkedIn: guias práticos do Posthink para quem publica com o próprio nome.",
     "productPaths": [],
     "shellFile": "seeds/shell-posthink.json",
     "tokenEnv": "GITHUB_TOKEN_POSTHINK"
@@ -47,6 +49,7 @@
     "baseUrl": "https://genbreed.com.br",
     "blogBasePath": "/blog",
     "authorUrl": "https://genbreed.com.br",
+    "blogDescription": "Genética animal explicada com o GenBreed: herança, cruzamentos e linhagens de gatos e cães.",
     "productPaths": []
   }
 }

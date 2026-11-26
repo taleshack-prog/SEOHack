@@ -5,5 +5,5 @@
 
   "headerHtml": "<header class=\"pt-bar\"><div class=\"pt-wrap\"><a class=\"pt-logo\" href=\"/\">Posthink</a><nav><a href=\"/blog\">Blog</a><a href=\"/\">O produto</a></nav></div></header>",
 
-  "footerHtml": "<aside class=\"pt-cta\"><h2>A IA escreve. Você continua sendo o autor.</h2><p>O Posthink pesquisa o assunto, escreve na sua voz e agenda — e nada vai ao ar sem você ler e aprovar. A publicação sai pela API oficial do LinkedIn.</p><a class=\"botao\" href=\"/\">Conhecer o Posthink</a></aside><footer class=\"pt-rodape\"><div class=\"pt-wrap\"><span>Posthink</span><span><a href=\"/blog\">Todos os artigos</a></span></div></footer>"
+  "footerHtml": "<aside class=\"pt-cta\"><h2>Comece pela auditoria do seu perfil. É grátis.</h2><p>Envie o PDF do seu perfil do LinkedIn e receba o diagnóstico: o que o perfil comunica hoje e o que ajustar primeiro. Uma auditoria por conta, sem cartão. Depois, o Posthink escreve na sua voz e nada vai ao ar sem você aprovar.</p><a class=\"botao\" href=\"/entrar?criar=1\">Auditar meu perfil grátis</a> <a href=\"/\">Conhecer o Posthink</a></aside><footer class=\"pt-rodape\"><div class=\"pt-wrap\"><span>Posthink</span><span><a href=\"/blog\">Todos os artigos</a></span></div></footer>"
 }
